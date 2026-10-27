@@ -1,5 +1,7 @@
 # Enterprise RAG v2
 
+[![ci](https://github.com/gauravgitgithub/enterprise-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/gauravgitgithub/enterprise-rag/actions/workflows/ci.yml)
+
 Multi-tenant retrieval-augmented generation for B2B documents: hybrid search, reranking,
 grounded answers with citations, PII redaction, and per-tenant + per-group access control
 enforced inside Postgres.

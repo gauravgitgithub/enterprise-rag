@@ -44,6 +44,17 @@ class UnitOfWork:
 
     async def __aenter__(self) -> Self:
         self._session = self._factory()
+        try:
+            await self._setup()
+        except BaseException:
+            # __aexit__ never runs when __aenter__ raises; close here or the connection leaks.
+            await self._session.close()
+            raise
+        self.documents = DocumentRepository(self._session, self._ctx)
+        self.chunks = ChunkRepository(self._session, self._ctx, rrf_k=self._rrf_k)
+        return self
+
+    async def _setup(self) -> None:
         await self._session.begin()
         await self._session.execute(
             select(
@@ -57,9 +68,6 @@ class UnitOfWork:
                 func.set_config(HNSW_ITERATIVE_SCAN_SETTING, HNSW_ITERATIVE_SCAN_MODE, True),
             )
         )
-        self.documents = DocumentRepository(self._session, self._ctx)
-        self.chunks = ChunkRepository(self._session, self._ctx, rrf_k=self._rrf_k)
-        return self
 
     async def __aexit__(
         self,

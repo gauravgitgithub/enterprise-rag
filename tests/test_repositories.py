@@ -34,7 +34,7 @@ async def _seed(
     factory: async_sessionmaker[AsyncSession], ctx: RequestContext, acl: list[str]
 ) -> uuid.UUID:
     async with UnitOfWork(factory, ctx) as uow:
-        doc = await uow.documents.add(_doc(acl))
+        doc, _ = await uow.documents.register(_doc(acl))
         await uow.chunks.add_many(
             doc,
             [

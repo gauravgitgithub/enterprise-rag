@@ -7,7 +7,6 @@ from sqlalchemy import delete, func, select, update
 from enterprise_rag.constants.db import GROUPS_SETTING, TENANT_SETTING
 from enterprise_rag.context import RequestContext
 from enterprise_rag.db.models import Chunk, Document
-from enterprise_rag.repositories.documents import DocumentNotVisibleError
 from enterprise_rag.repositories.uow import UnitOfWork
 from tests.conftest import onehot
 
@@ -43,11 +42,12 @@ async def test_restricted_document_metadata_is_invisible_outside_its_groups(
 
     async with UnitOfWork(app_factory, RequestContext(tenant, STAFF)) as uow:
         assert await uow.documents.get(doc.id) is None
-        assert await uow.documents.get_by_hash(doc.content_hash) is None
 
 
 # Break caught: DELETE allowed on rows the caller cannot read.
-async def test_user_outside_groups_cannot_delete_restricted_document(app_factory, make_tenant):
+async def test_user_outside_groups_cannot_delete_restricted_document(
+    app_factory, admin_engine, make_tenant
+):
     tenant = await make_tenant()
     doc = await _seed_exec_doc(app_factory, tenant)
 
@@ -55,29 +55,54 @@ async def test_user_outside_groups_cannot_delete_restricted_document(app_factory
         assert await uow.documents.delete(doc.id) is False
         assert await uow.chunks.delete_for_document(doc) == 0
 
-    async with UnitOfWork(app_factory, RequestContext(tenant, EXEC)) as uow:
-        assert await uow.documents.get(doc.id) is not None
-        assert await uow._session.scalar(select(func.count()).select_from(Chunk)) == 1
+    # Superuser view: ground truth, not filtered by RLS.
+    async with admin_engine.connect() as conn:
+        assert (
+            await conn.scalar(
+                select(func.count()).select_from(Chunk).where(Chunk.document_id == doc.id)
+            )
+            == 1
+        )
+        assert await conn.scalar(select(func.count()).where(Document.id == doc.id)) == 1
 
 
-# Break caught: register() crashing or returning someone else's restricted document.
-async def test_registering_content_of_an_invisible_document_is_refused(app_factory, make_tenant):
+# Break caught: dedupe key without the ACL. A hidden duplicate would either refuse the upload
+# (revealing it exists) or hand back a document with someone else's ACL.
+async def test_same_content_with_a_different_acl_is_a_separate_document(app_factory, make_tenant):
     tenant = await make_tenant()
     doc = await _seed_exec_doc(app_factory, tenant)
-    duplicate = _exec_doc()
-    duplicate.content_hash = doc.content_hash
-    duplicate.acl_groups = ["everyone"]
+    public_copy = _exec_doc()
+    public_copy.content_hash = doc.content_hash
+    public_copy.acl_groups = ["everyone"]
 
-    with pytest.raises(DocumentNotVisibleError):
-        async with UnitOfWork(app_factory, RequestContext(tenant, STAFF)) as uow:
-            await uow.documents.register(duplicate)
+    async with UnitOfWork(app_factory, RequestContext(tenant, STAFF)) as uow:
+        copy, created = await uow.documents.register(public_copy)
+
+    assert created is True
+    assert copy.id != doc.id
+    assert copy.acl_groups == ["everyone"]
+
+
+# Break caught: ACL compared in caller order, so ["b", "a"] and ["a", "b"] become two documents.
+async def test_acl_order_does_not_create_a_duplicate(app_factory, make_tenant):
+    ctx = RequestContext(await make_tenant(), frozenset({"a", "b"}))
+    first, second = _exec_doc(), _exec_doc()
+    second.content_hash = first.content_hash
+    first.acl_groups, second.acl_groups = ["b", "a"], ["a", "b"]
+
+    async with UnitOfWork(app_factory, ctx) as uow:
+        doc1, _ = await uow.documents.register(first)
+    async with UnitOfWork(app_factory, ctx) as uow:
+        doc2, created = await uow.documents.register(second)
+
+    assert (created, doc2.id) == (False, doc1.id)
 
 
 # Break caught: missing UPDATE/DELETE policies. A bare statement reads no columns, so Postgres
 # skips SELECT policies and only the write policies stand between staff and exec rows.
 @pytest.mark.parametrize(("model", "column"), [(Chunk, Chunk.content), (Document, Document.title)])
 async def test_bare_update_and_delete_cannot_touch_rows_outside_groups(
-    app_factory, make_tenant, model, column
+    app_factory, admin_engine, make_tenant, model, column
 ):
     tenant = await make_tenant()
     await _seed_exec_doc(app_factory, tenant)
@@ -92,7 +117,7 @@ async def test_bare_update_and_delete_cannot_touch_rows_outside_groups(
         await session.execute(update(model).values({column: "overwritten"}))
         await session.execute(delete(model))
 
-    async with UnitOfWork(app_factory, RequestContext(tenant, EXEC)) as uow:
-        assert list(await uow._session.scalars(select(column))) == [
+    async with admin_engine.connect() as conn:
+        assert list(await conn.scalars(select(column).where(model.tenant_id == tenant))) == [
             "secret" if model is Chunk else "Q3 restructuring plan"
         ]

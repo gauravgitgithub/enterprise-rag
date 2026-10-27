@@ -6,7 +6,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from enterprise_rag.config import get_settings
+from enterprise_rag.config import MigrationSettings
 from enterprise_rag.db.models import Base
 
 # this is the Alembic Config object, which provides
@@ -24,7 +24,7 @@ if config.config_file_name is not None:
 # target_metadata = mymodel.Base.metadata
 target_metadata = Base.metadata
 # Migrations run as the schema owner; the app itself connects as the RLS-bound role.
-config.set_main_option("sqlalchemy.url", get_settings().database_admin_url)
+config.set_main_option("sqlalchemy.url", MigrationSettings().database_admin_url)
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:

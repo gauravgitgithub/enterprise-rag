@@ -75,3 +75,19 @@ def test_chunk_may_fill_exactly_max_chars():
     chunks = chunk_sections([Section("H", "abcd efgh ij", None, 0)], max_chars=9, overlap=0)
 
     assert [c.text for c in chunks] == ["abcd efgh", "ij"]
+
+
+def test_ordinals_and_offsets_continue_across_sections():
+    sections = [
+        Section("A", "one two", page=1, offset=0),
+        Section("B", "three", page=2, offset=8),
+    ]
+
+    chunks = chunk_sections(sections, max_chars=4, overlap=0)
+
+    assert [(c.ordinal, c.text, c.section_path, c.char_start) for c in chunks] == [
+        (0, "one", "A", 0),
+        (1, "two", "A", 4),
+        (2, "thre", "B", 8),
+        (3, "e", "B", 12),
+    ]

@@ -8,56 +8,44 @@ from enterprise_rag.context import RequestContext
 from enterprise_rag.db.models import Document
 
 
-class DocumentNotVisibleError(Exception):
-    """Same content already exists in this tenant, in a document the caller may not see."""
-
-
 class DocumentRepository:
     def __init__(self, session: AsyncSession, ctx: RequestContext) -> None:
         self._session = session
         self._ctx = ctx
 
-    async def add(self, document: Document) -> Document:
-        # Tenant comes from the verified context, never from the caller's object.
-        document.tenant_id = self._ctx.tenant_id
-        self._session.add(document)
-        await self._session.flush()
-        return document
-
     async def register(self, document: Document) -> tuple[Document, bool]:
-        """Insert unless this tenant already has the same content. Returns (document, created).
+        """Insert unless this tenant has the same content under the same ACL.
 
-        ON CONFLICT is atomic: concurrent uploads of the same bytes cannot both insert.
+        Returns (document, created). ON CONFLICT is atomic, so concurrent uploads of the
+        same bytes cannot both insert. ACLs are sorted so group order never creates a copy.
         """
+        acl = sorted(set(document.acl_groups))
         values = {
             "tenant_id": self._ctx.tenant_id,
             "title": document.title,
             "source_uri": document.source_uri,
             "content_hash": document.content_hash,
-            "acl_groups": document.acl_groups,
+            "acl_groups": acl,
         }
         inserted = await self._session.scalar(
             pg_insert(Document)
             .values(values)
-            .on_conflict_do_nothing(constraint="uq_documents_tenant_hash")
+            .on_conflict_do_nothing(constraint="uq_documents_tenant_hash_acl")
             .returning(Document)
         )
         if inserted is not None:
             return inserted, True
-        existing = await self.get_by_hash(document.content_hash)
-        if existing is None:
-            # The conflicting row exists but RLS hides it: caller lacks its groups.
-            raise DocumentNotVisibleError(document.content_hash)
+        # The INSERT policy already required acl <= caller groups, so the existing row is visible.
+        existing = await self._session.scalar(
+            select(Document).where(
+                Document.content_hash == document.content_hash, Document.acl_groups == acl
+            )
+        )
+        assert existing is not None
         return existing, False
 
     async def get(self, document_id: uuid.UUID) -> Document | None:
         return await self._session.get(Document, document_id)
-
-    async def get_by_hash(self, content_hash: str) -> Document | None:
-        result = await self._session.execute(
-            select(Document).where(Document.content_hash == content_hash)
-        )
-        return result.scalar_one_or_none()
 
     async def delete(self, document_id: uuid.UUID) -> bool:
         result = await self._session.execute(

@@ -9,7 +9,6 @@ from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from testcontainers.community.postgres import PostgresContainer
 
-from enterprise_rag.config import get_settings
 from enterprise_rag.constants.db import APP_DB_ROLE
 from enterprise_rag.constants.retrieval import EMBEDDING_DIM
 from enterprise_rag.db.models import Tenant
@@ -29,8 +28,6 @@ def migrated(pg: PostgresContainer) -> tuple[str, str]:
     admin_url = pg.get_connection_url()
     # Real env vars outrank .env, so tests never touch the dev database.
     os.environ["RAG_DATABASE_ADMIN_URL"] = admin_url
-    os.environ["RAG_DATABASE_URL"] = admin_url
-    get_settings.cache_clear()
     command.upgrade(Config("alembic.ini"), "head")
     result = pg.get_wrapped_container().exec_run(
         [
