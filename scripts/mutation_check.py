@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 MIGRATION = next(Path("migrations/versions").glob("*_initial_schema.py"))
+ACL_MIGRATION = next(Path("migrations/versions").glob("*_acl_policies_on_documents_and_writes.py"))
 MUTANTS = [
     (
         "drop ACL policy",
@@ -96,6 +97,48 @@ MUTANTS = [
         'sa.UniqueConstraint("tenant_id", "content_hash", name="uq_documents_tenant_hash")',
         'sa.UniqueConstraint("content_hash", name="uq_documents_tenant_hash")',
         "test_same_content_in_another_tenant_is_a_separate_document",
+    ),
+    (
+        "documents readable outside groups",
+        ACL_MIGRATION,
+        '("acl_read", "documents", "SELECT"),',
+        "",
+        "test_restricted_document_metadata_is_invisible_outside_its_groups",
+    ),
+    (
+        "documents deletable outside groups",
+        ACL_MIGRATION,
+        '("acl_delete", "documents", "DELETE"),',
+        "",
+        "test_bare_update_and_delete_cannot_touch_rows_outside_groups",
+    ),
+    (
+        "chunks deletable outside groups",
+        ACL_MIGRATION,
+        '("acl_delete", "chunks", "DELETE"),',
+        "",
+        "test_bare_update_and_delete_cannot_touch_rows_outside_groups",
+    ),
+    (
+        "documents updatable outside groups",
+        ACL_MIGRATION,
+        '("acl_update", "documents", "UPDATE"),',
+        "",
+        "test_bare_update_and_delete_cannot_touch_rows_outside_groups",
+    ),
+    (
+        "chunks updatable outside groups",
+        ACL_MIGRATION,
+        '("acl_update", "chunks", "UPDATE"),',
+        "",
+        "test_bare_update_and_delete_cannot_touch_rows_outside_groups",
+    ),
+    (
+        "register returns hidden duplicate",
+        Path("src/enterprise_rag/repositories/documents.py"),
+        "raise DocumentNotVisibleError(document.content_hash)",
+        "return document, False",
+        "test_registering_content_of_an_invisible_document_is_refused",
     ),
 ]
 

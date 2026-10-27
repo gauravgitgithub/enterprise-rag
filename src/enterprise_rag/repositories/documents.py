@@ -8,6 +8,10 @@ from enterprise_rag.context import RequestContext
 from enterprise_rag.db.models import Document
 
 
+class DocumentNotVisibleError(Exception):
+    """Same content already exists in this tenant, in a document the caller may not see."""
+
+
 class DocumentRepository:
     def __init__(self, session: AsyncSession, ctx: RequestContext) -> None:
         self._session = session
@@ -41,7 +45,9 @@ class DocumentRepository:
         if inserted is not None:
             return inserted, True
         existing = await self.get_by_hash(document.content_hash)
-        assert existing is not None  # conflict means the row exists and RLS lets us see it
+        if existing is None:
+            # The conflicting row exists but RLS hides it: caller lacks its groups.
+            raise DocumentNotVisibleError(document.content_hash)
         return existing, False
 
     async def get(self, document_id: uuid.UUID) -> Document | None:
