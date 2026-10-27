@@ -114,3 +114,53 @@ async def test_app_role_cannot_list_tenants(app_factory, make_tenant):
     async with app_factory() as session:
         with pytest.raises(DBAPIError, match="permission denied"):
             await session.execute(select(Tenant.name))
+
+
+# Break caught: chunk writes gated by visibility only, so an "hr" member can add content to a
+# document shared with exec, and exec sees it cited as that document.
+async def test_cannot_add_chunks_visible_to_groups_you_are_not_in(app_factory, make_tenant):
+    tenant = await make_tenant()
+    doc = await _doc(app_factory, tenant, ["exec", "hr"])
+
+    async with app_factory() as session, session.begin():
+        await _set_context(session, tenant, "hr")
+        with pytest.raises(DBAPIError, match="row-level security"):
+            await session.execute(insert(Chunk).values(_chunk_values(tenant, doc, ["exec", "hr"])))
+
+
+# Break caught: DELETE gated by overlap, so one group can destroy a document shared with others.
+async def test_cannot_delete_a_document_shared_with_groups_you_are_not_in(app_factory, make_tenant):
+    tenant = await make_tenant()
+    doc = await _doc(app_factory, tenant, ["exec", "hr"])
+
+    async with UnitOfWork(app_factory, RequestContext(tenant, frozenset({"hr"}))) as uow:
+        assert await uow.documents.delete(doc.id) is False
+
+
+# Break caught: chunk ACLs copied once at ingest and never updated, so narrowing a document's
+# ACL leaves its content searchable by the old audience.
+async def test_narrowing_a_document_acl_hides_its_chunks(app_factory, make_tenant):
+    tenant = await make_tenant()
+    doc = await _doc(app_factory, tenant, ["everyone"])
+    async with UnitOfWork(app_factory, RequestContext(tenant, frozenset({"everyone"}))) as uow:
+        await uow.chunks.add_many(
+            doc,
+            [
+                Chunk(
+                    ordinal=0,
+                    content="salary bands",
+                    char_start=0,
+                    char_end=12,
+                    embedding=onehot(0),
+                )
+            ],
+        )
+
+    async with app_factory() as session, session.begin():
+        await _set_context(session, tenant, "everyone,exec")
+        await session.execute(
+            update(Document).where(Document.id == doc.id).values(acl_groups=["exec"])
+        )
+
+    async with UnitOfWork(app_factory, RequestContext(tenant, frozenset({"everyone"}))) as uow:
+        assert await uow.chunks.hybrid_search("salary", onehot(0)) == []

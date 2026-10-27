@@ -18,30 +18,48 @@ depends_on: str | Sequence[str] | None = None
 
 
 GROUPS = "string_to_array(NULLIF(current_setting('app.groups', true), ''), ',')"
+# Reads need overlap (acl_read). Writes need every group on the row: you may only create,
+# change or delete what is visible to no one outside your own groups.
+WRITE_ALLOWED = f"acl_groups <@ {GROUPS}"
 # The subquery runs under RLS too: a document the caller cannot see yields NULL, so it fails.
 CHUNK_ACL_MATCHES_DOC = (
     "acl_groups = (SELECT d.acl_groups FROM documents d WHERE d.id = chunks.document_id)"
 )
-# You may only grant access to groups you belong to.
-DOC_ACL_WITHIN_CALLER = f"acl_groups <@ {GROUPS}"
+CHECKS = {
+    "documents": WRITE_ALLOWED,
+    "chunks": f"{WRITE_ALLOWED} AND {CHUNK_ACL_MATCHES_DOC}",
+}
 
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.execute(
-        f"CREATE POLICY acl_insert ON documents AS RESTRICTIVE FOR INSERT "
-        f"WITH CHECK ({DOC_ACL_WITHIN_CALLER})"
-    )
-    op.execute(
-        f"CREATE POLICY acl_insert ON chunks AS RESTRICTIVE FOR INSERT "
-        f"WITH CHECK ({CHUNK_ACL_MATCHES_DOC})"
-    )
-    for table, check in (("documents", DOC_ACL_WITHIN_CALLER), ("chunks", CHUNK_ACL_MATCHES_DOC)):
+    for table, check in CHECKS.items():
+        op.execute(
+            f"CREATE POLICY acl_insert ON {table} AS RESTRICTIVE FOR INSERT WITH CHECK ({check})"
+        )
         op.execute(f"DROP POLICY acl_update ON {table}")
         op.execute(
             f"CREATE POLICY acl_update ON {table} AS RESTRICTIVE FOR UPDATE "
-            f"USING (acl_groups && {GROUPS}) WITH CHECK ({check})"
+            f"USING ({WRITE_ALLOWED}) WITH CHECK ({check})"
         )
+        op.execute(f"DROP POLICY acl_delete ON {table}")
+        op.execute(
+            f"CREATE POLICY acl_delete ON {table} AS RESTRICTIVE FOR DELETE USING ({WRITE_ALLOWED})"
+        )
+
+    # Chunk ACLs are a denormalized copy for the search filter; keep them in step with the
+    # document in the same statement. SECURITY INVOKER, so the caller's RLS still applies.
+    op.execute(
+        "CREATE FUNCTION sync_chunk_acl() RETURNS trigger LANGUAGE plpgsql "
+        "SET search_path = public AS $$ BEGIN "
+        "UPDATE chunks SET acl_groups = NEW.acl_groups WHERE document_id = NEW.id; "
+        "RETURN NULL; END $$"
+    )
+    op.execute(
+        "CREATE TRIGGER documents_acl_sync AFTER UPDATE OF acl_groups ON documents "
+        "FOR EACH ROW WHEN (OLD.acl_groups IS DISTINCT FROM NEW.acl_groups) "
+        "EXECUTE FUNCTION sync_chunk_acl()"
+    )
 
     # Same bytes under a different ACL is a different document: no hidden-row collisions.
     op.drop_constraint("uq_documents_tenant_hash", "documents")
@@ -60,10 +78,13 @@ def downgrade() -> None:
     op.create_unique_constraint(
         "uq_documents_tenant_hash", "documents", ["tenant_id", "content_hash"]
     )
-    for table in ("documents", "chunks"):
-        op.execute(f"DROP POLICY acl_update ON {table}")
-        op.execute(
-            f"CREATE POLICY acl_update ON {table} AS RESTRICTIVE FOR UPDATE "
-            f"USING (acl_groups && {GROUPS})"
-        )
+    op.execute("DROP TRIGGER documents_acl_sync ON documents")
+    op.execute("DROP FUNCTION sync_chunk_acl()")
+    for table in CHECKS:
+        for name, command in (("acl_update", "UPDATE"), ("acl_delete", "DELETE")):
+            op.execute(f"DROP POLICY {name} ON {table}")
+            op.execute(
+                f"CREATE POLICY {name} ON {table} AS RESTRICTIVE FOR {command} "
+                f"USING (acl_groups && {GROUPS})"
+            )
         op.execute(f"DROP POLICY acl_insert ON {table}")
