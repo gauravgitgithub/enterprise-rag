@@ -214,6 +214,34 @@ MUTANTS = [
         "ordinal=start,",
         "test_ordinals_and_offsets_continue_across_sections",
     ),
+    (
+        "redact every entity type",
+        Path("src/enterprise_rag/ingestion/redaction.py"),
+        "entities=list(REDACTED_ENTITIES)",
+        "entities=None",
+        "test_places_and_dates_are_kept",
+    ),
+    (
+        "names not redacted",
+        Path("src/enterprise_rag/constants/redaction.py"),
+        '    "PERSON",\n',
+        "",
+        "test_person_name_is_replaced",
+    ),
+    (
+        "section offsets not recomputed",
+        Path("src/enterprise_rag/ingestion/redaction.py"),
+        "offset=offset)",
+        "offset=section.offset)",
+        "test_redacted_sections_get_offsets_into_the_redacted_document",
+    ),
+    (
+        "separator missing from offsets",
+        Path("src/enterprise_rag/ingestion/redaction.py"),
+        "offset += len(redacted.text) + len(SECTION_SEPARATOR)",
+        "offset += len(redacted.text)",
+        "test_redacted_sections_get_offsets_into_the_redacted_document",
+    ),
 ]
 
 survivors = []
