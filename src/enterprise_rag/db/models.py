@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -15,7 +16,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, TSVECTOR, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from enterprise_rag.constants.documents import (
@@ -25,6 +26,7 @@ from enterprise_rag.constants.documents import (
     TENANT_NAME_MAX_LEN,
     TITLE_MAX_LEN,
 )
+from enterprise_rag.constants.outbox import TOPIC_MAX_LEN
 from enterprise_rag.constants.retrieval import EMBEDDING_DIM, FTS_LANGUAGE
 
 
@@ -114,4 +116,18 @@ class Chunk(Base):
     tsv: Mapped[str] = mapped_column(
         TSVECTOR, Computed(f"to_tsvector('{FTS_LANGUAGE}', content)", persisted=True)
     )
+    created_at: Mapped[datetime] = _created_at()
+
+
+class OutboxEvent(Base):
+    """Written in the same transaction as the change it announces; deleted once published."""
+
+    __tablename__ = "outbox"
+
+    id: Mapped[uuid.UUID] = _pk()  # uuidv7: ordering by id is ordering by creation
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    topic: Mapped[str] = mapped_column(String(TOPIC_MAX_LEN), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = _created_at()

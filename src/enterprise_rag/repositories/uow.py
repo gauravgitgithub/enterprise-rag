@@ -16,6 +16,7 @@ from enterprise_rag.constants.retrieval import DEFAULT_HNSW_EF_SEARCH, DEFAULT_R
 from enterprise_rag.context import RequestContext
 from enterprise_rag.repositories.chunks import ChunkRepository
 from enterprise_rag.repositories.documents import DocumentRepository
+from enterprise_rag.repositories.outbox import OutboxRepository
 
 
 class UnitOfWork:
@@ -28,6 +29,7 @@ class UnitOfWork:
 
     documents: DocumentRepository
     chunks: ChunkRepository
+    outbox: OutboxRepository
 
     def __init__(
         self,
@@ -52,6 +54,7 @@ class UnitOfWork:
             raise
         self.documents = DocumentRepository(self._session, self._ctx)
         self.chunks = ChunkRepository(self._session, self._ctx, rrf_k=self._rrf_k)
+        self.outbox = OutboxRepository(self._session, self._ctx)
         return self
 
     async def _setup(self) -> None:
