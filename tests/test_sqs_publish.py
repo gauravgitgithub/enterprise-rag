@@ -1,6 +1,5 @@
 import asyncio
 import os
-import threading
 import uuid
 from collections.abc import Iterator
 
@@ -46,12 +45,10 @@ async def test_relayed_event_reaches_a_celery_worker(
     app = make_celery(region=REGION, queue_urls={INGEST_QUEUE: sqs_queue_url})
     app.conf.broker_transport_options["wait_time_seconds"] = 1  # keep worker shutdown fast
     received: list[dict] = []
-    got_one = threading.Event()
 
     @app.task(name=INGEST_TASK)
     def ingest(**kwargs):  # type: ignore[no-untyped-def]
         received.append(kwargs)
-        got_one.set()
 
     tenant = await make_tenant()
     async with UnitOfWork(app_factory, RequestContext(tenant, frozenset({"everyone"}))) as uow:
@@ -68,9 +65,14 @@ async def test_relayed_event_reaches_a_celery_worker(
     with start_worker(app, pool="solo", perform_ping_check=False, queues=[INGEST_QUEUE]):
         while await relay_once(relay_factory, celery_publisher(app)):
             pass
-        await asyncio.to_thread(got_one.wait, 30)
+        expected = {"tenant_id": str(tenant), "document_id": str(doc.id)}
+        # Other tests may have left events in the shared outbox; wait for this one.
+        for _ in range(150):
+            if expected in received:
+                break
+            await asyncio.sleep(0.2)
 
-    assert {"tenant_id": str(tenant), "document_id": str(doc.id)} in received
+    assert expected in received
 
 
 async def test_unknown_topic_is_refused_so_the_event_stays_queued():
