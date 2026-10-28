@@ -342,9 +342,9 @@ MUTANTS = [
     (
         "any bucket readable",
         Path("src/enterprise_rag/ingestion/storage.py"),
-        " or parts.netloc != bucket",
+        "            or not re.fullmatch(allowed, key)\n",
         "",
-        "test_refuses_uris_outside_the_configured_bucket",
+        "test_refuses_anything_but_this_tenants_document_keys",
     ),
     (
         "no size limit",
@@ -352,6 +352,13 @@ MUTANTS = [
         'if obj["ContentLength"] > max_bytes:',
         "if False:",
         "test_refuses_objects_over_the_size_limit",
+    ),
+    (
+        "any bucket readable",
+        Path("src/enterprise_rag/ingestion/storage.py"),
+        "            or parts.netloc != bucket\n",
+        "",
+        "test_refuses_anything_but_this_tenants_document_keys",
     ),
 ]
 

@@ -3,12 +3,13 @@ from collections.abc import Awaitable, Callable, Sequence
 
 from enterprise_rag.constants.chunking import CHUNK_MAX_CHARS, CHUNK_OVERLAP_CHARS
 from enterprise_rag.constants.documents import DOCUMENT_STATUS_READY
-from enterprise_rag.db.models import Chunk
+from enterprise_rag.db.models import Chunk, Document
 from enterprise_rag.ingestion.chunking import Section, chunk_sections
 from enterprise_rag.ingestion.redaction import PiiRedactor, redact_sections
 from enterprise_rag.repositories.uow import UnitOfWork
 
-Fetch = Callable[[str], Awaitable[bytes]]
+# Gets the whole document so adapters can check source_uri against its tenant.
+Fetch = Callable[[Document], Awaitable[bytes]]
 Parse = Callable[[bytes], list[Section]]
 Embed = Callable[[Sequence[str]], Awaitable[list[list[float]]]]
 
@@ -31,7 +32,7 @@ async def ingest_document(
     if document is None or document.status == DOCUMENT_STATUS_READY:
         return 0
 
-    sections = parse(await fetch(document.source_uri))
+    sections = parse(await fetch(document))
     redacted = redact_sections(sections, redactor)
     spans = chunk_sections(
         redacted.sections, max_chars=CHUNK_MAX_CHARS, overlap=CHUNK_OVERLAP_CHARS

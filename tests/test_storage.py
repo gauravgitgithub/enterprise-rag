@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Iterator
 
 import boto3
@@ -5,9 +6,17 @@ import pytest
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 
+from enterprise_rag.db.models import Document
 from enterprise_rag.ingestion.storage import make_s3_fetch
 
 BUCKET = "rag-docs-test"
+TENANT = uuid.UUID("01000000-0000-7000-8000-000000000001")
+OTHER_TENANT = uuid.UUID("01000000-0000-7000-8000-000000000002")
+KEY = f"tenants/{TENANT}/docs/d1/v1/original.pdf"
+
+
+def doc(uri: str, tenant: uuid.UUID = TENANT) -> Document:
+    return Document(tenant_id=tenant, source_uri=uri)
 
 
 @pytest.fixture(scope="module")
@@ -28,37 +37,39 @@ def s3() -> Iterator[object]:
         )
         client.create_bucket(Bucket=BUCKET)
         client.create_bucket(Bucket="other-bucket")
+        client.put_object(Bucket=BUCKET, Key=KEY, Body=b"%PDF-1.7 ...")
+        client.put_object(
+            Bucket=BUCKET, Key=f"tenants/{OTHER_TENANT}/docs/d9/v1/secret.pdf", Body=b"secret"
+        )
         yield client
 
 
 async def test_fetches_the_object_bytes(s3):
-    s3.put_object(Bucket=BUCKET, Key="tenants/t1/docs/d1/v1/original.pdf", Body=b"%PDF-1.7 ...")
-
-    fetch = make_s3_fetch(BUCKET, s3)
-
-    assert await fetch(f"s3://{BUCKET}/tenants/t1/docs/d1/v1/original.pdf") == b"%PDF-1.7 ..."
+    assert await make_s3_fetch(BUCKET, s3)(doc(f"s3://{BUCKET}/{KEY}")) == b"%PDF-1.7 ..."
 
 
-# Break caught: source_uri comes from the database; trusting it lets a bad row read any bucket
-# the worker's IAM role can reach, or any URL scheme.
+# Break caught: source_uri is database data. Trusting it lets a bad or tampered row read another
+# bucket, another tenant's files, or escape the key layout through odd segments or URL parts.
 @pytest.mark.parametrize(
     "uri",
     [
-        "s3://other-bucket/tenants/t1/secret.pdf",
-        "https://rag-docs-test.s3.amazonaws.com/tenants/t1/x.pdf",
+        f"s3://other-bucket/{KEY}",
+        f"https://{BUCKET}.s3.amazonaws.com/{KEY}",
+        f"s3://{BUCKET}/tenants/{OTHER_TENANT}/docs/d9/v1/secret.pdf",
+        f"s3://{BUCKET}/tenants/{TENANT}/docs/d1/v1/../../../{OTHER_TENANT}/docs/d9/v1/secret.pdf",
+        f"s3://{BUCKET}/tenants/{TENANT}/docs/d1/v1/..",
+        f"s3://{BUCKET}/{KEY}?versionId=1",
+        f"s3://{BUCKET}/{KEY}#frag",
+        f"s3://user@{BUCKET}/{KEY}",
         f"s3://{BUCKET}/",
     ],
 )
-async def test_refuses_uris_outside_the_configured_bucket(s3, uri):
-    s3.put_object(Bucket="other-bucket", Key="tenants/t1/secret.pdf", Body=b"secret")
-
+async def test_refuses_anything_but_this_tenants_document_keys(s3, uri):
     with pytest.raises(ValueError, match="refusing"):
-        await make_s3_fetch(BUCKET, s3)(uri)
+        await make_s3_fetch(BUCKET, s3)(doc(uri))
 
 
 # Break caught: huge objects read fully into worker memory.
 async def test_refuses_objects_over_the_size_limit(s3):
-    s3.put_object(Bucket=BUCKET, Key="big.bin", Body=b"x" * 11)
-
     with pytest.raises(ValueError, match="too large"):
-        await make_s3_fetch(BUCKET, s3, max_bytes=10)(f"s3://{BUCKET}/big.bin")
+        await make_s3_fetch(BUCKET, s3, max_bytes=5)(doc(f"s3://{BUCKET}/{KEY}"))
