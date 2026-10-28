@@ -27,7 +27,8 @@ async def _events_for(admin_engine, document_id: uuid.UUID) -> list[tuple[str, d
         return [tuple(r) for r in rows]
 
 
-# Break caught: new uploads never queued for ingestion, or duplicates queued again.
+# Break caught: new uploads never queued for ingestion, or duplicates queued again, or the job
+# missing the groups the worker needs to see the document under RLS.
 async def test_new_document_queues_one_ingest_job_and_duplicates_queue_none(
     app_factory, admin_engine, make_tenant
 ):
@@ -41,5 +42,8 @@ async def test_new_document_queues_one_ingest_job_and_duplicates_queue_none(
         await register_document(uow, _doc(content_hash))
 
     assert await _events_for(admin_engine, doc.id) == [
-        ("document.ingest", {"tenant_id": str(tenant), "document_id": str(doc.id)})
+        (
+            "document.ingest",
+            {"tenant_id": str(tenant), "document_id": str(doc.id), "acl_groups": ["everyone"]},
+        )
     ]

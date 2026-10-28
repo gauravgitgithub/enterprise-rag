@@ -304,6 +304,41 @@ MUTANTS = [
         "task, queue = TOPIC_ROUTES.get(topic, next(iter(TOPIC_ROUTES.values())))",
         "test_unknown_topic_is_refused_so_the_event_stays_queued",
     ),
+    (
+        "unredacted text chunked and embedded",
+        Path("src/enterprise_rag/ingestion/pipeline.py"),
+        "redacted.sections, max_chars=",
+        "sections, max_chars=",
+        "test_ingest_stores_redacted_chunks_with_exact_spans",
+    ),
+    (
+        "redelivered jobs ingest again",
+        Path("src/enterprise_rag/ingestion/pipeline.py"),
+        " or document.status == DOCUMENT_STATUS_READY",
+        "",
+        "test_redelivered_job_does_not_ingest_twice",
+    ),
+    (
+        "missing document crashes the job",
+        Path("src/enterprise_rag/ingestion/pipeline.py"),
+        "if document is None or document.status",
+        "if document.status",
+        "test_job_for_a_deleted_document_is_a_no_op",
+    ),
+    (
+        "document never marked ready",
+        Path("src/enterprise_rag/ingestion/pipeline.py"),
+        "    document.status = DOCUMENT_STATUS_READY",
+        "    pass",
+        "test_ingest_stores_redacted_chunks_with_exact_spans",
+    ),
+    (
+        "headings stored unredacted",
+        Path("src/enterprise_rag/ingestion/redaction.py"),
+        "heading_path=heading.text,",
+        "",
+        "test_section_headings_are_redacted_too",
+    ),
 ]
 
 survivors = []

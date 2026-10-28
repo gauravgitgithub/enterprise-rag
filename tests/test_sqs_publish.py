@@ -65,7 +65,11 @@ async def test_relayed_event_reaches_a_celery_worker(
     with start_worker(app, pool="solo", perform_ping_check=False, queues=[INGEST_QUEUE]):
         while await relay_once(relay_factory, celery_publisher(app)):
             pass
-        expected = {"tenant_id": str(tenant), "document_id": str(doc.id)}
+        expected = {
+            "tenant_id": str(tenant),
+            "document_id": str(doc.id),
+            "acl_groups": ["everyone"],
+        }
         # Other tests may have left events in the shared outbox; wait for this one.
         for _ in range(150):
             if expected in received:

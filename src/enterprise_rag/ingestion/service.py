@@ -7,7 +7,13 @@ async def register_document(uow: UnitOfWork, document: Document) -> tuple[Docume
     """Register an upload and, if it is new, queue it for ingestion in the same transaction."""
     doc, created = await uow.documents.register(document)
     if created:
+        # The worker needs the document's groups to see it under RLS.
         await uow.outbox.add(
-            TOPIC_DOCUMENT_INGEST, {"tenant_id": str(doc.tenant_id), "document_id": str(doc.id)}
+            TOPIC_DOCUMENT_INGEST,
+            {
+                "tenant_id": str(doc.tenant_id),
+                "document_id": str(doc.id),
+                "acl_groups": list(doc.acl_groups),
+            },
         )
     return doc, created

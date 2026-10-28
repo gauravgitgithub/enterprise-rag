@@ -7,3 +7,4 @@ STATUS_MAX_LEN = 20
 
 # Joins section texts into the canonical document text that chunk spans index into.
 SECTION_SEPARATOR = "\n\n"
+DOCUMENT_STATUS_READY = "ready"
