@@ -283,6 +283,27 @@ MUTANTS = [
         "ON outbox TO rag_relay, rag_app USING (true)",
         "test_app_role_sees_only_its_own_tenants_events",
     ),
+    (
+        "duplicates queued again",
+        Path("src/enterprise_rag/ingestion/service.py"),
+        "    if created:",
+        "    if True:",
+        "test_new_document_queues_one_ingest_job_and_duplicates_queue_none",
+    ),
+    (
+        "job sent to the wrong queue",
+        Path("src/enterprise_rag/worker/celery_app.py"),
+        "kwargs=payload, queue=queue)",
+        'kwargs=payload, queue="default")',
+        "test_relayed_event_reaches_a_celery_worker",
+    ),
+    (
+        "unknown topics silently routed",
+        Path("src/enterprise_rag/worker/celery_app.py"),
+        "task, queue = TOPIC_ROUTES[topic]",
+        "task, queue = TOPIC_ROUTES.get(topic, next(iter(TOPIC_ROUTES.values())))",
+        "test_unknown_topic_is_refused_so_the_event_stays_queued",
+    ),
 ]
 
 survivors = []
