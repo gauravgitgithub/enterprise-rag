@@ -339,6 +339,20 @@ MUTANTS = [
         "",
         "test_section_headings_are_redacted_too",
     ),
+    (
+        "any bucket readable",
+        Path("src/enterprise_rag/ingestion/storage.py"),
+        " or parts.netloc != bucket",
+        "",
+        "test_refuses_uris_outside_the_configured_bucket",
+    ),
+    (
+        "no size limit",
+        Path("src/enterprise_rag/ingestion/storage.py"),
+        'if obj["ContentLength"] > max_bytes:',
+        "if False:",
+        "test_refuses_objects_over_the_size_limit",
+    ),
 ]
 
 survivors = []
