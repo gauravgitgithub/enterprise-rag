@@ -9,7 +9,7 @@ from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from testcontainers.community.postgres import PostgresContainer
 
-from enterprise_rag.constants.db import APP_DB_ROLE
+from enterprise_rag.constants.db import APP_DB_ROLE, RELAY_DB_ROLE
 from enterprise_rag.constants.retrieval import EMBEDDING_DIM
 from enterprise_rag.db.models import Tenant
 from enterprise_rag.db.session import make_engine, make_session_factory
@@ -37,12 +37,22 @@ def migrated(pg: PostgresContainer) -> tuple[str, str]:
             "-d",
             pg.dbname,
             "-c",
-            f"ALTER ROLE {APP_DB_ROLE} PASSWORD '{APP_PASSWORD}'",
+            f"ALTER ROLE {APP_DB_ROLE} PASSWORD '{APP_PASSWORD}'; "
+            f"ALTER ROLE {RELAY_DB_ROLE} PASSWORD '{APP_PASSWORD}'",
         ]
     )
     assert result.exit_code == 0, result.output
     app_url = admin_url.replace(f"{pg.username}:{pg.password}@", f"{APP_DB_ROLE}:{APP_PASSWORD}@")
     return admin_url, app_url
+
+
+@pytest.fixture(scope="session")
+async def relay_factory(
+    migrated: tuple[str, str],
+) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    engine = make_engine(migrated[1].replace(f"{APP_DB_ROLE}:", f"{RELAY_DB_ROLE}:"))
+    yield make_session_factory(engine)
+    await engine.dispose()
 
 
 @pytest.fixture(scope="session")

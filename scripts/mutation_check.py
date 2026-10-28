@@ -1,8 +1,13 @@
 """Break production code one way at a time; each mutation must make the named test fail."""
 
+import signal
 import subprocess
 import sys
 from pathlib import Path
+
+MUTANT_TIMEOUT_S = 300
+# SIGTERM runs `finally` too, so a killed run never leaves a mutant in the source tree.
+signal.signal(signal.SIGTERM, signal.default_int_handler)
 
 MIGRATION = next(Path("migrations/versions").glob("*_initial_schema.py"))
 ACL_MIGRATION = next(Path("migrations/versions").glob("*_acl_policies_on_documents_and_writes.py"))
@@ -242,6 +247,42 @@ MUTANTS = [
         "offset += len(redacted.text)",
         "test_redacted_sections_get_offsets_into_the_redacted_document",
     ),
+    (
+        "relays read without row locks",
+        Path("src/enterprise_rag/outbox_relay.py"),
+        ".with_for_update(skip_locked=True)",
+        "",
+        "test_concurrent_relays_publish_each_event_once",
+    ),
+    (
+        "publish failures swallowed",
+        Path("src/enterprise_rag/outbox_relay.py"),
+        "            await publish(event.topic, event.payload)",
+        "            with __import__('contextlib').suppress(Exception):\n"
+        "                await publish(event.topic, event.payload)",
+        "test_failed_publish_keeps_the_event_for_the_next_run",
+    ),
+    (
+        "published events never removed",
+        Path("src/enterprise_rag/outbox_relay.py"),
+        "        if events:",
+        "        if False:",
+        "test_committed_event_is_published_once_and_then_removed",
+    ),
+    (
+        "outbox committed outside the caller's transaction",
+        Path("src/enterprise_rag/repositories/outbox.py"),
+        "await self._session.flush()",
+        "await self._session.commit()",
+        "test_rolled_back_transaction_publishes_nothing",
+    ),
+    (
+        "app role drains every tenant",
+        next(Path("migrations/versions").glob("*_outbox.py")),
+        "ON outbox TO rag_relay USING (true)",
+        "ON outbox TO rag_relay, rag_app USING (true)",
+        "test_app_role_sees_only_its_own_tenants_events",
+    ),
 ]
 
 survivors = []
@@ -254,7 +295,10 @@ for name, path, old, new, test in MUTANTS:
             ["uv", "run", "pytest", "-q", "-x", "-k", test, "-p", "no:cacheprovider"],
             capture_output=True,
             text=True,
+            timeout=MUTANT_TIMEOUT_S,
         ).returncode
+    except subprocess.TimeoutExpired:
+        rc = 1  # a hang is a failing test: the mutant is caught
     finally:
         path.write_text(original)
     print(f"{'KILLED ' if rc else 'SURVIVED'}  {name}  ({test})")

@@ -1,5 +1,7 @@
 # Postgres role the application connects as (non-owner, NOBYPASSRLS).
 APP_DB_ROLE = "rag_app"
+# Outbox relay role: reads and deletes outbox rows across tenants, nothing else.
+RELAY_DB_ROLE = "rag_relay"
 
 # Transaction-local settings read by the RLS policies. The initial migration
 # hardcodes the same names on purpose: migrations must not change when this file does.
