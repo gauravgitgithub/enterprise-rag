@@ -1,0 +1,55 @@
+import io
+
+from docling.datamodel.base_models import DocumentStream, InputFormat
+from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.document_converter import DocumentConverter, PdfFormatOption
+from docling_core.types.doc import SectionHeaderItem, TableItem, TextItem, TitleItem
+
+from enterprise_rag.constants.documents import SECTION_SEPARATOR
+from enterprise_rag.ingestion.chunking import Section
+from enterprise_rag.ingestion.pipeline import Parse
+
+HEADING_SEPARATOR = " > "
+
+
+def make_docling_parse() -> Parse:
+    """Layout-aware parsing with Docling. Build once per worker: it loads ML models."""
+    # shortcut: OCR off, so scanned PDFs yield no text; enable do_ocr when they must be supported.
+    pdf = PdfFormatOption(pipeline_options=PdfPipelineOptions(do_ocr=False))
+    converter = DocumentConverter(format_options={InputFormat.PDF: pdf})
+
+    def parse(raw: bytes, filename: str) -> list[Section]:
+        # Docling picks the format from the file name.
+        doc = converter.convert(DocumentStream(name=filename, stream=io.BytesIO(raw))).document
+        sections: list[Section] = []
+        headings: list[tuple[int, str]] = []  # (level, title) of the open heading chain
+        body: list[str] = []
+        page: int | None = None
+
+        def close() -> None:
+            if body:
+                offset = sum(len(s.text) + len(SECTION_SEPARATOR) for s in sections)
+                path = HEADING_SEPARATOR.join(title for _, title in headings)
+                sections.append(Section(path, "\n".join(body), page, offset))
+
+        for item, _ in doc.iterate_items():
+            if isinstance(item, SectionHeaderItem | TitleItem):
+                close()
+                body, page = [], None
+                level = item.level if isinstance(item, SectionHeaderItem) else 0
+                headings = [h for h in headings if h[0] < level] + [(level, item.text)]
+                continue
+            if isinstance(item, TableItem):
+                text = item.export_to_markdown(doc=doc)
+            elif isinstance(item, TextItem):
+                text = item.text
+            else:
+                continue
+            if text.strip():
+                body.append(text)
+                if page is None and item.prov:
+                    page = item.prov[0].page_no
+        close()
+        return sections
+
+    return parse

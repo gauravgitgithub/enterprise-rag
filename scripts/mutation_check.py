@@ -388,6 +388,41 @@ MUTANTS = [
         "pass",
         "test_http_errors_raise_so_the_job_retries",
     ),
+    (
+        "heading tree flattened",
+        Path("src/enterprise_rag/ingestion/parsing.py"),
+        "headings = [h for h in headings if h[0] < level] + [(level, item.text)]",
+        "headings = [(level, item.text)]",
+        "test_docx_sections_follow_the_heading_tree",
+    ),
+    (
+        "tables dropped",
+        Path("src/enterprise_rag/ingestion/parsing.py"),
+        "text = item.export_to_markdown(doc=doc)",
+        "continue",
+        "test_docx_sections_follow_the_heading_tree",
+    ),
+    (
+        "PDF pages lost",
+        Path("src/enterprise_rag/ingestion/parsing.py"),
+        "page = item.prov[0].page_no",
+        "page = None",
+        "test_pdf_sections_carry_page_numbers",
+    ),
+    (
+        "section offsets skip the separator",
+        Path("src/enterprise_rag/ingestion/parsing.py"),
+        "len(s.text) + len(SECTION_SEPARATOR)",
+        "len(s.text)",
+        "test_offsets_lay_sections_end_to_end",
+    ),
+    (
+        "parser not told the file name",
+        Path("src/enterprise_rag/ingestion/pipeline.py"),
+        "await asyncio.to_thread(parse, raw, filename)",
+        'await asyncio.to_thread(parse, raw, "")',
+        "test_ingest_stores_redacted_chunks_with_exact_spans",
+    ),
 ]
 
 survivors = []
