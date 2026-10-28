@@ -1,4 +1,6 @@
-SPACY_MODEL = "en_core_web_sm"
+# md, not sm: sm misses names without sentence context (e.g. headings). lg adds 380 MB
+# for no measured gain on our probes.
+SPACY_MODEL = "en_core_web_md"
 LANGUAGE = "en"
 
 # Only identifiers that point at a person. Places, organisations and dates stay: retrieval

@@ -58,3 +58,11 @@ def test_redacted_sections_get_offsets_into_the_redacted_document(redactor):
         ("Contact", "Mail <EMAIL_ADDRESS> now.", 2, 23),
     ]
     assert doc.entity_counts == {"PERSON": 1, "EMAIL_ADDRESS": 1}
+
+
+# Break caught: headings stored unredacted in chunks.section_path ("Contacts > Priya Sharma").
+def test_section_headings_are_redacted_too(redactor):
+    doc = redact_sections([Section("Contacts > Priya Sharma", "Call now.", None, 0)], redactor)
+
+    assert doc.sections[0].heading_path == "Contacts > <PERSON>"
+    assert doc.entity_counts == {"PERSON": 1}

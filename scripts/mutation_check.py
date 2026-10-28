@@ -332,6 +332,13 @@ MUTANTS = [
         "    pass",
         "test_ingest_stores_redacted_chunks_with_exact_spans",
     ),
+    (
+        "headings stored unredacted",
+        Path("src/enterprise_rag/ingestion/redaction.py"),
+        "heading_path=heading.text,",
+        "",
+        "test_section_headings_are_redacted_too",
+    ),
 ]
 
 survivors = []

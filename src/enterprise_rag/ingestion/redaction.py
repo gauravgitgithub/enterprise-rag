@@ -54,7 +54,10 @@ def redact_sections(sections: Sequence[Section], redactor: PiiRedactor) -> Redac
     offset = 0
     for section in sections:
         redacted = redactor.redact(section.text)
-        out.append(replace(section, text=redacted.text, offset=offset))
+        # Headings are stored with every chunk (section_path), so they are redacted too.
+        heading = redactor.redact(section.heading_path)
+        out.append(replace(section, text=redacted.text, heading_path=heading.text, offset=offset))
         counts.update(redacted.entity_counts)
+        counts.update(heading.entity_counts)
         offset += len(redacted.text) + len(SECTION_SEPARATOR)
     return RedactedDocument(SECTION_SEPARATOR.join(s.text for s in out), out, dict(counts))

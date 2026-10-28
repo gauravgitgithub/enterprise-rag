@@ -642,11 +642,11 @@ wheels = [
 ]
 
 [[package]]
-name = "en-core-web-sm"
+name = "en-core-web-md"
 version = "3.8.0"
-source = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" }
+source = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl" }
 wheels = [
-    { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl", hash = "sha256:1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85" },
+    { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl", hash = "sha256:5e6329fe3fecedb1d1a02c3ea2172ee0fede6cea6e4aefb6a02d832dba78a310" },
 ]
 
 [[package]]
@@ -657,7 +657,7 @@ dependencies = [
     { name = "alembic" },
     { name = "asyncpg" },
     { name = "celery", extra = ["sqs"] },
-    { name = "en-core-web-sm" },
+    { name = "en-core-web-md" },
     { name = "pgvector" },
     { name = "presidio-analyzer" },
     { name = "presidio-anonymizer" },
@@ -679,7 +679,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.20.1" },
     { name = "asyncpg", specifier = ">=0.32.0" },
     { name = "celery", extras = ["sqs"], specifier = ">=5.6.3" },
-    { name = "en-core-web-sm", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl" },
+    { name = "en-core-web-md", url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl" },
     { name = "pgvector", specifier = ">=0.5.1" },
     { name = "presidio-analyzer", specifier = ">=2.2.366" },
     { name = "presidio-anonymizer", specifier = ">=2.2.366" },
