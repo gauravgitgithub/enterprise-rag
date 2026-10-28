@@ -22,7 +22,7 @@ def redactor() -> PiiRedactor:
     return PiiRedactor()
 
 
-async def fetch(uri: str) -> bytes:
+async def fetch(document: Document) -> bytes:
     return SOURCE
 
 
