@@ -360,6 +360,34 @@ MUTANTS = [
         "",
         "test_refuses_anything_but_this_tenants_document_keys",
     ),
+    (
+        "one request per document, no batching",
+        Path("src/enterprise_rag/ingestion/embedding.py"),
+        "for start in range(0, len(texts), batch_size):",
+        "for start in range(0, len(texts), len(texts) or 1):",
+        "test_batches_inputs_and_keeps_order",
+    ),
+    (
+        "long chunks rejected instead of truncated",
+        Path("src/enterprise_rag/ingestion/embedding.py"),
+        '"truncate": True,',
+        '"truncate": False,',
+        "test_batches_inputs_and_keeps_order",
+    ),
+    (
+        "wrong-model vectors accepted",
+        Path("src/enterprise_rag/ingestion/embedding.py"),
+        "if any(len(v) != EMBEDDING_DIM for v in vectors):",
+        "if False:",
+        "test_rejects_vectors_of_the_wrong_dimension",
+    ),
+    (
+        "HTTP errors swallowed",
+        Path("src/enterprise_rag/ingestion/embedding.py"),
+        "response.raise_for_status()",
+        "pass",
+        "test_http_errors_raise_so_the_job_retries",
+    ),
 ]
 
 survivors = []

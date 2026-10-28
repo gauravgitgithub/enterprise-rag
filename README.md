@@ -11,7 +11,7 @@ enforced inside Postgres.
 | Slice | Scope | State |
 |---|---|---|
 | 1 | Data layer: schema, row-level security, repositories, hybrid search | done |
-| 2 | Ingestion: S3 upload, outbox, Celery on SQS, parse, redact, chunk, embed | in progress: chunker, idempotent registration, PII redaction, outbox, Celery on SQS publish, ingest pipeline done; S3, Docling, bge-m3 adapters next |
+| 2 | Ingestion: S3 upload, outbox, Celery on SQS, parse, redact, chunk, embed | in progress: chunker, idempotent registration, PII redaction, outbox, Celery on SQS publish, ingest pipeline, S3 fetch, TEI embedding done; Docling parse, worker task, relay entrypoint next |
 | 3 | Query API: auth, rerank, OpenAI generation, citations, verifier | planned |
 | 4 | Evals, CI gate, k8s deploy, load and chaos tests | planned |
 
