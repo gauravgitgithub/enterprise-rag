@@ -1,5 +1,7 @@
 # Enterprise RAG v2
 
+[![ci](https://github.com/gauravgitgithub/enterprise-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/gauravgitgithub/enterprise-rag/actions/workflows/ci.yml)
+
 Multi-tenant retrieval-augmented generation for B2B documents: hybrid search, reranking,
 grounded answers with citations, PII redaction, and per-tenant + per-group access control
 enforced inside Postgres.
@@ -52,7 +54,14 @@ uv run pytest
 - A tenant cannot read, search or delete another tenant's documents.
 - A session with no tenant context reads zero rows (RLS fails closed).
 - Writing a row for another tenant is rejected by Postgres.
-- Chunks outside the caller's groups never appear in search results.
+- Documents and chunks outside the caller's groups can't be read, even by statements that
+  bypass the repositories.
+- Writes (insert, update, delete) need every group on the row: one group can't change or
+  delete what another group also sees.
+- A chunk's ACL always equals its document's, including after the document's ACL changes.
+- The same file under a different ACL is a separate document, so uploads never reveal
+  hidden documents.
+- The application role cannot list tenants.
 - Tenant context does not leak across pooled connections.
 - Hybrid search ranks an exact-term match above a semantic-only match.
 

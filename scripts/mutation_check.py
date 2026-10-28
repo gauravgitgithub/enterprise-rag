@@ -6,6 +6,8 @@ from pathlib import Path
 
 MIGRATION = next(Path("migrations/versions").glob("*_initial_schema.py"))
 ACL_MIGRATION = next(Path("migrations/versions").glob("*_acl_policies_on_documents_and_writes.py"))
+WRITE_MIGRATION = next(Path("migrations/versions").glob("*_acl_write_checks_acl_scoped_dedupe_.py"))
+DOCS_REPO = Path("src/enterprise_rag/repositories/documents.py")
 MUTANTS = [
     (
         "drop ACL policy",
@@ -45,8 +47,8 @@ MUTANTS = [
     (
         "caller-supplied tenant on insert",
         Path("src/enterprise_rag/repositories/documents.py"),
-        "document.tenant_id = self._ctx.tenant_id",
-        "pass",
+        '"tenant_id": self._ctx.tenant_id,',
+        '"tenant_id": document.tenant_id,',
         "test_other_tenant_sees_nothing",
     ),
     (
@@ -87,16 +89,9 @@ MUTANTS = [
     (
         "plain insert, no conflict handling",
         Path("src/enterprise_rag/repositories/documents.py"),
-        '.on_conflict_do_nothing(constraint="uq_documents_tenant_hash")',
+        '.on_conflict_do_nothing(constraint="uq_documents_tenant_hash_acl")',
         "",
         "test_concurrent_registrations_of_same_content_create_one_document",
-    ),
-    (
-        "content dedupe across tenants",
-        MIGRATION,
-        'sa.UniqueConstraint("tenant_id", "content_hash", name="uq_documents_tenant_hash")',
-        'sa.UniqueConstraint("content_hash", name="uq_documents_tenant_hash")',
-        "test_same_content_in_another_tenant_is_a_separate_document",
     ),
     (
         "documents readable outside groups",
@@ -106,39 +101,118 @@ MUTANTS = [
         "test_restricted_document_metadata_is_invisible_outside_its_groups",
     ),
     (
-        "documents deletable outside groups",
-        ACL_MIGRATION,
-        '("acl_delete", "documents", "DELETE"),',
-        "",
+        # Migration 3 recreates acl_delete, so it is the one to mutate.
+        "rows deletable outside groups",
+        WRITE_MIGRATION,
+        "FOR DELETE USING ({WRITE_ALLOWED})",
+        "FOR DELETE USING (true)",
         "test_bare_update_and_delete_cannot_touch_rows_outside_groups",
     ),
     (
-        "chunks deletable outside groups",
-        ACL_MIGRATION,
-        '("acl_delete", "chunks", "DELETE"),',
-        "",
+        "delete gated by overlap, not subset",
+        WRITE_MIGRATION,
+        "FOR DELETE USING ({WRITE_ALLOWED})",
+        "FOR DELETE USING (acl_groups && {GROUPS})",
+        "test_cannot_delete_a_document_shared_with_groups_you_are_not_in",
+    ),
+    (
+        "chunk writes skip the subset check",
+        WRITE_MIGRATION,
+        '"chunks": f"{WRITE_ALLOWED} AND {CHUNK_ACL_MATCHES_DOC}",',
+        '"chunks": CHUNK_ACL_MATCHES_DOC,',
+        "test_cannot_add_chunks_visible_to_groups_you_are_not_in",
+    ),
+    (
+        "chunk ACLs not synced on document change",
+        WRITE_MIGRATION,
+        "AFTER UPDATE OF acl_groups ON documents",
+        "AFTER UPDATE OF title ON documents",
+        "test_narrowing_a_document_acl_hides_its_chunks",
+    ),
+    (
+        # Migration 3 recreates acl_update, so it is the one to mutate.
+        "rows updatable outside groups",
+        WRITE_MIGRATION,
+        'f"USING ({WRITE_ALLOWED}) WITH CHECK ({check})"',
+        'f"USING (true) WITH CHECK ({check})"',
         "test_bare_update_and_delete_cannot_touch_rows_outside_groups",
     ),
     (
-        "documents updatable outside groups",
-        ACL_MIGRATION,
-        '("acl_update", "documents", "UPDATE"),',
-        "",
-        "test_bare_update_and_delete_cannot_touch_rows_outside_groups",
+        "chunk ACL not tied to document",
+        WRITE_MIGRATION,
+        '"acl_groups = (SELECT d.acl_groups FROM documents d WHERE d.id = chunks.document_id)"',
+        '"true"',
+        "test_chunk_acl_must_equal_its_document_acl",
     ),
     (
-        "chunks updatable outside groups",
-        ACL_MIGRATION,
-        '("acl_update", "chunks", "UPDATE"),',
-        "",
-        "test_bare_update_and_delete_cannot_touch_rows_outside_groups",
+        "chunks attachable to invisible docs",
+        WRITE_MIGRATION,
+        '"acl_groups = (SELECT d.acl_groups FROM documents d WHERE d.id = chunks.document_id)"',
+        '"true"',
+        "test_cannot_attach_chunks_to_an_invisible_document",
     ),
     (
-        "register returns hidden duplicate",
-        Path("src/enterprise_rag/repositories/documents.py"),
-        "raise DocumentNotVisibleError(document.content_hash)",
-        "return document, False",
-        "test_registering_content_of_an_invisible_document_is_refused",
+        "grant to groups you are not in",
+        WRITE_MIGRATION,
+        'f"acl_groups <@ {GROUPS}"',
+        'f"acl_groups && {GROUPS}"',
+        "test_cannot_create_a_document_for_groups_you_are_not_in",
+    ),
+    (
+        "relabel into foreign groups",
+        WRITE_MIGRATION,
+        'f"acl_groups <@ {GROUPS}"',
+        'f"acl_groups && {GROUPS}"',
+        "test_cannot_relabel_a_document_into_groups_you_are_not_in",
+    ),
+    (
+        "app role reads tenants",
+        WRITE_MIGRATION,
+        'op.execute("REVOKE SELECT ON tenants FROM rag_app")',
+        "pass",
+        "test_app_role_cannot_list_tenants",
+    ),
+    (
+        "dedupe ignores ACL",
+        WRITE_MIGRATION,
+        '["tenant_id", "content_hash", "acl_groups"]',
+        '["tenant_id", "content_hash"]',
+        "test_same_content_with_a_different_acl_is_a_separate_document",
+    ),
+    (
+        "dedupe across tenants",
+        WRITE_MIGRATION,
+        '["tenant_id", "content_hash", "acl_groups"]',
+        '["content_hash", "acl_groups"]',
+        "test_same_content_in_another_tenant_is_a_separate_document",
+    ),
+    (
+        "ACL order matters",
+        DOCS_REPO,
+        "acl = sorted(set(document.acl_groups))",
+        "acl = list(document.acl_groups)",
+        "test_acl_order_does_not_create_a_duplicate",
+    ),
+    (
+        "UoW leaks connection on failed setup",
+        Path("src/enterprise_rag/repositories/uow.py"),
+        "            await self._session.close()\n            raise",
+        "            raise",
+        "test_failed_setup_returns_the_connection_to_the_pool",
+    ),
+    (
+        "migrations need the app URL",
+        Path("src/enterprise_rag/config.py"),
+        "    database_admin_url: str\n",
+        "    database_admin_url: str\n    database_url: str\n",
+        "test_migrations_need_only_the_admin_url",
+    ),
+    (
+        "ordinals restart per section",
+        Path("src/enterprise_rag/ingestion/chunking.py"),
+        "ordinal=len(chunks),",
+        "ordinal=start,",
+        "test_ordinals_and_offsets_continue_across_sections",
     ),
 ]
 

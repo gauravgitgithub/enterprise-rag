@@ -39,10 +39,8 @@ class ChunkRepository:
         await self._session.flush()
 
     async def delete_for_document(self, document: Document) -> int:
-        result = await self._session.execute(
-            delete(Chunk).where(Chunk.document_id == document.id).returning(Chunk.id)
-        )
-        return len(result.all())
+        result = await self._session.execute(delete(Chunk).where(Chunk.document_id == document.id))
+        return result.rowcount  # type: ignore[attr-defined, no-any-return]
 
     def _visible(self) -> list:  # type: ignore[type-arg]
         # Same predicates as the RLS policies. RLS is the backstop; stating them here

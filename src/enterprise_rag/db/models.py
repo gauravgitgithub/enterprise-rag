@@ -51,7 +51,9 @@ class Tenant(Base):
 class Document(Base):
     __tablename__ = "documents"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "content_hash", name="uq_documents_tenant_hash"),
+        UniqueConstraint(
+            "tenant_id", "content_hash", "acl_groups", name="uq_documents_tenant_hash_acl"
+        ),
         # Target for the chunks composite FK below.
         UniqueConstraint("id", "tenant_id", name="uq_documents_id_tenant"),
         CheckConstraint("cardinality(acl_groups) > 0", name="ck_documents_acl_not_empty"),
