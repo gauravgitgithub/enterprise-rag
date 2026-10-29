@@ -423,6 +423,27 @@ MUTANTS = [
         'await asyncio.to_thread(parse, raw, "")',
         "test_ingest_stores_redacted_chunks_with_exact_spans",
     ),
+    (
+        "every Docling format reachable",
+        Path("src/enterprise_rag/ingestion/parsing.py"),
+        "allowed_formats=[InputFormat.PDF, InputFormat.DOCX],",
+        "",
+        "test_unsupported_formats_are_refused",
+    ),
+    (
+        "no page cap",
+        Path("src/enterprise_rag/ingestion/parsing.py"),
+        ", max_num_pages=max_pages",
+        "",
+        "test_pdfs_over_the_page_cap_are_refused",
+    ),
+    (
+        "parser crashes escape unmapped",
+        Path("src/enterprise_rag/ingestion/parsing.py"),
+        "except Exception as exc:",
+        "except ArithmeticError as exc:",
+        "test_corrupt_files_raise_unparseable_document",
+    ),
 ]
 
 survivors = []

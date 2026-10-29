@@ -3,9 +3,9 @@ import io
 import pytest
 from docx import Document as Docx
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import Paragraph, SimpleDocTemplate
+from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate
 
-from enterprise_rag.ingestion.parsing import make_docling_parse
+from enterprise_rag.ingestion.parsing import UnparseableDocument, make_docling_parse
 
 
 @pytest.fixture(scope="module")
@@ -74,3 +74,31 @@ def test_pdf_sections_carry_page_numbers(parse):
         ("Refund Policy", "Refunds within 30 days.", 1),
         ("Exceptions", "Gift cards are final.", 1),
     ]
+
+
+def pdf_with_pages(n: int) -> bytes:
+    styles, buf, story = getSampleStyleSheet(), io.BytesIO(), []
+    for i in range(n):
+        story += [Paragraph(f"Page {i + 1}", styles["BodyText"]), PageBreak()]
+    SimpleDocTemplate(buf).build(story)
+    return buf.getvalue()
+
+
+# Break caught: every format Docling knows (HTML, XML, images, ...) reachable from an upload,
+# widening the parser attack surface beyond what we support.
+def test_unsupported_formats_are_refused(parse):
+    with pytest.raises(UnparseableDocument):
+        parse(b"<html><body><h1>Hi</h1></body></html>", "page.html")
+
+
+# Break caught: a huge PDF tying up a worker for minutes and exhausting memory.
+def test_pdfs_over_the_page_cap_are_refused():
+    with pytest.raises(UnparseableDocument, match="pages"):
+        make_docling_parse(max_pages=2)(pdf_with_pages(3), "original.pdf")
+
+
+# Break caught: parser crashes on malformed files escaping as arbitrary errors, so the worker
+# cannot tell "bad document, stop" from "transient, retry".
+def test_corrupt_files_raise_unparseable_document(parse):
+    with pytest.raises(UnparseableDocument):
+        parse(b"%PDF-1.7 truncated garbage", "original.pdf")

@@ -5,22 +5,41 @@ from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.types.doc import SectionHeaderItem, TableItem, TextItem, TitleItem
 
-from enterprise_rag.constants.documents import SECTION_SEPARATOR
+from enterprise_rag.constants.documents import (
+    PARSE_MAX_PAGES,
+    PARSE_TIMEOUT_S,
+    SECTION_SEPARATOR,
+)
 from enterprise_rag.ingestion.chunking import Section
 from enterprise_rag.ingestion.pipeline import Parse
 
 HEADING_SEPARATOR = " > "
 
 
-def make_docling_parse() -> Parse:
+class UnparseableDocument(ValueError):
+    """The file cannot be parsed. Retrying will not help."""
+
+
+def make_docling_parse(*, max_pages: int = PARSE_MAX_PAGES) -> Parse:
     """Layout-aware parsing with Docling. Build once per worker: it loads ML models."""
     # shortcut: OCR off, so scanned PDFs yield no text; enable do_ocr when they must be supported.
-    pdf = PdfFormatOption(pipeline_options=PdfPipelineOptions(do_ocr=False))
-    converter = DocumentConverter(format_options={InputFormat.PDF: pdf})
+    pdf = PdfFormatOption(
+        pipeline_options=PdfPipelineOptions(do_ocr=False, document_timeout=PARSE_TIMEOUT_S)
+    )
+    # Only formats we support: every other Docling backend stays unreachable from uploads.
+    converter = DocumentConverter(
+        allowed_formats=[InputFormat.PDF, InputFormat.DOCX],
+        format_options={InputFormat.PDF: pdf},
+    )
 
     def parse(raw: bytes, filename: str) -> list[Section]:
         # Docling picks the format from the file name.
-        doc = converter.convert(DocumentStream(name=filename, stream=io.BytesIO(raw))).document
+        try:
+            doc = converter.convert(
+                DocumentStream(name=filename, stream=io.BytesIO(raw)), max_num_pages=max_pages
+            ).document
+        except Exception as exc:  # Docling raises assorted types on malformed input
+            raise UnparseableDocument(f"cannot parse {filename!r}: {exc}") from exc
         sections: list[Section] = []
         headings: list[tuple[int, str]] = []  # (level, title) of the open heading chain
         body: list[str] = []
