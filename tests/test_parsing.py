@@ -102,3 +102,25 @@ def test_pdfs_over_the_page_cap_are_refused():
 def test_corrupt_files_raise_unparseable_document(parse):
     with pytest.raises(UnparseableDocument):
         parse(b"%PDF-1.7 truncated garbage", "original.pdf")
+
+
+def zip_bomb_docx() -> bytes:
+    """A valid DOCX plus one entry that is tiny compressed but huge uncompressed."""
+    import zipfile
+
+    src = zipfile.ZipFile(io.BytesIO(docx_bytes()))
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as out:
+        for item in src.infolist():
+            out.writestr(item, src.read(item))
+        out.writestr("word/media/padding.bin", b"\0" * (64 * 1024 * 1024))
+    return buf.getvalue()
+
+
+# Break caught: a few-KB DOCX expanding to gigabytes inside the parser (zip bomb).
+def test_docx_that_expands_beyond_the_limit_is_refused():
+    raw = zip_bomb_docx()
+    assert len(raw) < 1024 * 1024  # small on the wire
+
+    with pytest.raises(UnparseableDocument, match="uncompressed"):
+        make_docling_parse(max_unzipped_bytes=32 * 1024 * 1024)(raw, "original.docx")

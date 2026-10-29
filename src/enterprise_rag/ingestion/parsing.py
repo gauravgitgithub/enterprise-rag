@@ -1,4 +1,5 @@
 import io
+import zipfile
 
 from docling.datamodel.base_models import DocumentStream, InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions
@@ -6,7 +7,9 @@ from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.types.doc import SectionHeaderItem, TableItem, TextItem, TitleItem
 
 from enterprise_rag.constants.documents import (
+    MAX_DOCUMENT_BYTES,
     PARSE_MAX_PAGES,
+    PARSE_MAX_UNZIPPED_BYTES,
     PARSE_TIMEOUT_S,
     SECTION_SEPARATOR,
 )
@@ -20,7 +23,9 @@ class UnparseableDocument(ValueError):
     """The file cannot be parsed. Retrying will not help."""
 
 
-def make_docling_parse(*, max_pages: int = PARSE_MAX_PAGES) -> Parse:
+def make_docling_parse(
+    *, max_pages: int = PARSE_MAX_PAGES, max_unzipped_bytes: int = PARSE_MAX_UNZIPPED_BYTES
+) -> Parse:
     """Layout-aware parsing with Docling. Build once per worker: it loads ML models."""
     # shortcut: OCR off, so scanned PDFs yield no text; enable do_ocr when they must be supported.
     pdf = PdfFormatOption(
@@ -34,9 +39,19 @@ def make_docling_parse(*, max_pages: int = PARSE_MAX_PAGES) -> Parse:
 
     def parse(raw: bytes, filename: str) -> list[Section]:
         # Docling picks the format from the file name.
+        if zipfile.is_zipfile(io.BytesIO(raw)):
+            # Sizes come from the ZIP directory, so nothing is decompressed to check them.
+            unzipped = sum(i.file_size for i in zipfile.ZipFile(io.BytesIO(raw)).infolist())
+            if unzipped > max_unzipped_bytes:
+                raise UnparseableDocument(
+                    f"{filename!r} expands to {unzipped} uncompressed bytes "
+                    f"(limit {max_unzipped_bytes})"
+                )
         try:
             doc = converter.convert(
-                DocumentStream(name=filename, stream=io.BytesIO(raw)), max_num_pages=max_pages
+                DocumentStream(name=filename, stream=io.BytesIO(raw)),
+                max_num_pages=max_pages,
+                max_file_size=MAX_DOCUMENT_BYTES,
             ).document
         except Exception as exc:  # Docling raises assorted types on malformed input
             raise UnparseableDocument(f"cannot parse {filename!r}: {exc}") from exc

@@ -433,7 +433,7 @@ MUTANTS = [
     (
         "no page cap",
         Path("src/enterprise_rag/ingestion/parsing.py"),
-        ", max_num_pages=max_pages",
+        "                max_num_pages=max_pages,\n",
         "",
         "test_pdfs_over_the_page_cap_are_refused",
     ),
@@ -443,6 +443,13 @@ MUTANTS = [
         "except Exception as exc:",
         "except ArithmeticError as exc:",
         "test_corrupt_files_raise_unparseable_document",
+    ),
+    (
+        "zip bombs reach the parser",
+        Path("src/enterprise_rag/ingestion/parsing.py"),
+        "if unzipped > max_unzipped_bytes:",
+        "if False:",
+        "test_docx_that_expands_beyond_the_limit_is_refused",
     ),
 ]
 
