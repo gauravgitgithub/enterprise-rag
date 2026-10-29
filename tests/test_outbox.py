@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from enterprise_rag.constants.db import TENANT_SETTING
 from enterprise_rag.context import RequestContext
 from enterprise_rag.db.models import OutboxEvent
-from enterprise_rag.outbox_relay import relay_once
+from enterprise_rag.outbox_relay import relay_once, run_relay
 from enterprise_rag.repositories.uow import UnitOfWork
 
 EVERYONE = frozenset({"everyone"})
@@ -128,3 +128,37 @@ async def test_app_role_sees_only_its_own_tenants_events(app_factory, make_tenan
     async with app_factory() as session, session.begin():
         await session.execute(select(func.set_config(TENANT_SETTING, str(mine), True)))
         assert await session.scalar(select(func.count()).select_from(OutboxEvent)) == 0
+
+
+# Break caught: the relay process dying (or stalling) after one failed publish, so the outbox
+# fills up until someone restarts the pod.
+async def test_relay_loop_survives_publish_failures(app_factory, relay_factory, make_tenant):
+    marker = str(uuid.uuid4())
+    await _emit(app_factory, await make_tenant(), marker)
+    stop = asyncio.Event()
+    sink = Sink()
+    calls = 0
+
+    async def flaky(topic: str, payload: dict[str, Any]) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise UploadFailed  # broker blip
+        await sink(topic, payload)
+        if sink.for_marker(marker):
+            stop.set()
+
+    await asyncio.wait_for(run_relay(relay_factory, flaky, stop, idle_s=0.01), timeout=10)
+
+    assert len(sink.for_marker(marker)) == 1
+
+
+# Break caught: shutdown waiting out the idle sleep, so Kubernetes SIGKILLs the pod.
+async def test_relay_loop_stops_promptly_while_idle(relay_factory):
+    stop = asyncio.Event()
+    loop = asyncio.create_task(run_relay(relay_factory, Sink(), stop, idle_s=60))
+    await asyncio.sleep(0.5)
+
+    stop.set()
+
+    await asyncio.wait_for(loop, timeout=2)

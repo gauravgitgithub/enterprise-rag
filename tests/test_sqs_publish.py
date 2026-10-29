@@ -1,5 +1,9 @@
 import asyncio
+import base64
+import json
 import os
+import signal
+import sys
 import uuid
 from collections.abc import Iterator
 
@@ -9,6 +13,8 @@ from celery.contrib.testing.worker import start_worker
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.wait_strategies import LogMessageWaitStrategy
 
+from enterprise_rag.constants.db import APP_DB_ROLE, RELAY_DB_ROLE
+from enterprise_rag.constants.outbox import TOPIC_DOCUMENT_INGEST
 from enterprise_rag.constants.queues import INGEST_QUEUE, INGEST_TASK
 from enterprise_rag.context import RequestContext
 from enterprise_rag.db.models import Document
@@ -84,3 +90,47 @@ async def test_unknown_topic_is_refused_so_the_event_stays_queued():
     app = make_celery(region=REGION, queue_urls={INGEST_QUEUE: "http://unused"})
     with pytest.raises(KeyError):
         await celery_publisher(app)("no.such.topic", {})
+
+
+def _task_kwargs(sqs, queue_url: str) -> list[dict]:
+    """Celery task kwargs of the messages now on the queue (kombu double-encodes the body)."""
+    received = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=10, WaitTimeSeconds=1)
+    kwargs = []
+    for message in received.get("Messages", []):
+        envelope = json.loads(base64.b64decode(message["Body"]))
+        kwargs.append(json.loads(base64.b64decode(envelope["body"]))[1])
+    return kwargs
+
+
+# Break caught: the deployable relay failing to start, to publish from settings, or to exit
+# cleanly on SIGTERM (Kubernetes would SIGKILL it mid-batch).
+async def test_relay_process_publishes_and_exits_on_sigterm(
+    sqs_queue_url, migrated, app_factory, make_tenant
+):
+    marker = str(uuid.uuid4())
+    async with UnitOfWork(
+        app_factory, RequestContext(await make_tenant(), frozenset({"everyone"}))
+    ) as uow:
+        await uow.outbox.add(TOPIC_DOCUMENT_INGEST, {"marker": marker})
+    env = os.environ | {
+        "RAG_RELAY_DATABASE_URL": migrated[1].replace(f"{APP_DB_ROLE}:", f"{RELAY_DB_ROLE}:"),
+        "RAG_AWS_REGION": REGION,
+        "RAG_INGEST_QUEUE_URL": sqs_queue_url,
+    }
+    relay = await asyncio.create_subprocess_exec(
+        sys.executable, "-m", "enterprise_rag.relay", env=env
+    )
+    try:
+        sqs = boto3.client("sqs", region_name=REGION)
+        seen: list[dict] = []
+        for _ in range(30):
+            seen += await asyncio.to_thread(_task_kwargs, sqs, sqs_queue_url)
+            if any(k.get("marker") == marker for k in seen):
+                break
+        assert any(k.get("marker") == marker for k in seen)
+
+        relay.send_signal(signal.SIGTERM)
+        assert await asyncio.wait_for(relay.wait(), timeout=15) == 0
+    finally:
+        if relay.returncode is None:
+            relay.kill()

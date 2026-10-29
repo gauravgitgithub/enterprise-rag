@@ -507,6 +507,34 @@ MUTANTS = [
         "def deps",
         "test_worker_module_wires_the_ingest_task_from_settings",
     ),
+    (
+        "relay dies on a failed publish",
+        Path("src/enterprise_rag/outbox_relay.py"),
+        "except Exception:",
+        "except ArithmeticError:",
+        "test_relay_loop_survives_publish_failures",
+    ),
+    (
+        "relay sleeps through shutdown",
+        Path("src/enterprise_rag/outbox_relay.py"),
+        "await asyncio.wait_for(stop.wait(), idle_s)",
+        "await asyncio.sleep(idle_s)",
+        "test_relay_loop_stops_promptly_while_idle",
+    ),
+    (
+        "relay killed by SIGTERM mid-batch",
+        Path("src/enterprise_rag/relay.py"),
+        "loop.add_signal_handler(sig, stop.set)",
+        "pass",
+        "test_relay_process_publishes_and_exits_on_sigterm",
+    ),
+    (
+        "relay publishes nowhere",
+        Path("src/enterprise_rag/relay.py"),
+        "{INGEST_QUEUE: settings.ingest_queue_url}",
+        "{INGEST_QUEUE: 'http://localhost:9/nowhere'}",
+        "test_relay_process_publishes_and_exits_on_sigterm",
+    ),
 ]
 
 survivors = []

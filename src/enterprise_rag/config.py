@@ -18,11 +18,24 @@ class Settings(MigrationSettings):
     database_url: str
 
 
-class WorkerSettings(Settings):
-    """What the ingest worker needs on top of the app settings."""
+class QueueSettings(BaseSettings):
+    """Where Celery jobs go. Shared by the relay (producer) and the worker (consumer)."""
+
+    model_config = SettingsConfigDict(env_prefix="RAG_", env_file=".env", extra="ignore")
 
     aws_region: str
     # Locally, AWS_ENDPOINT_URL_SQS / AWS_ENDPOINT_URL_S3 point boto3 at ElasticMQ / SeaweedFS.
     ingest_queue_url: str
+
+
+class RelaySettings(QueueSettings):
+    """What the outbox relay needs. Its own DB role: reads every tenant's outbox, nothing else."""
+
+    relay_database_url: str
+
+
+class WorkerSettings(Settings, QueueSettings):
+    """What the ingest worker needs on top of the app settings."""
+
     s3_bucket: str
     tei_url: str
