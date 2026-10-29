@@ -6,7 +6,7 @@ import httpx
 import pytest
 from sqlalchemy import select
 
-from enterprise_rag.constants.queues import INGEST_QUEUE, INGEST_TASK
+from enterprise_rag.constants.queues import INGEST_MAX_RETRIES, INGEST_QUEUE, INGEST_TASK
 from enterprise_rag.context import RequestContext
 from enterprise_rag.db.models import Document
 from enterprise_rag.ingestion.chunking import Section
@@ -117,6 +117,8 @@ async def test_transient_errors_propagate_and_leave_the_document_pending(
         {"tenant_id": "not-a-uuid", "document_id": str(uuid.uuid4()), "acl_groups": ACL},
         {"tenant_id": str(uuid.uuid4()), "document_id": str(uuid.uuid4()), "acl_groups": ["a,b"]},
         {"tenant_id": str(uuid.uuid4()), "document_id": str(uuid.uuid4())},
+        # A bare string would become the groups {"h", "r"}.
+        {"tenant_id": str(uuid.uuid4()), "document_id": str(uuid.uuid4()), "acl_groups": "hr"},
     ],
 )
 async def test_malformed_messages_raise_value_error(app_factory, redactor, payload):
@@ -124,17 +126,29 @@ async def test_malformed_messages_raise_value_error(app_factory, redactor, paylo
         await handle_ingest(payload, deps(app_factory, redactor))
 
 
+def db_down():
+    raise OSError("database unreachable")
+
+
 # Break caught: retry policy inverted: transient errors dropped, or bad input retried 5 times.
-def test_task_retries_transient_errors_but_not_bad_input(app_factory, redactor):
+def test_task_retries_transient_errors_but_not_bad_input(redactor):
     app = make_celery(region="eu-west-1", queue_urls={INGEST_QUEUE: "http://unused"})
-    register_tasks(app, lambda: deps(app_factory, redactor, embed=embed_down))
+    attempts = 0
+
+    def broken_db_deps() -> IngestDeps:
+        nonlocal attempts
+        attempts += 1
+        return IngestDeps(db_down, fetch, parse, redactor, embed)
+
+    register_tasks(app, broken_db_deps)
     task = app.tasks[INGEST_TASK]
 
-    transient = task.apply(
-        kwargs={"tenant_id": str(uuid.uuid4()), "document_id": str(uuid.uuid4()),
-                "acl_groups": ACL}
+    # Eager mode runs the retries inline, without the backoff sleep.
+    task.apply(
+        kwargs={"tenant_id": str(uuid.uuid4()), "document_id": str(uuid.uuid4()), "acl_groups": ACL}
     )
-    bad_input = task.apply(kwargs={"tenant_id": "nope", "document_id": "nope", "acl_groups": ACL})
+    assert attempts == 1 + INGEST_MAX_RETRIES
 
-    assert transient.state == "RETRY"
-    assert bad_input.state == "FAILURE"
+    attempts = 0
+    task.apply(kwargs={"tenant_id": "nope", "document_id": "nope", "acl_groups": ACL})
+    assert attempts == 1
