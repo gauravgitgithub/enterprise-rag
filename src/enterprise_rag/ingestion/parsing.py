@@ -39,14 +39,17 @@ def make_docling_parse(
 
     def parse(raw: bytes, filename: str) -> list[Section]:
         # Docling picks the format from the file name.
-        if zipfile.is_zipfile(io.BytesIO(raw)):
+        try:
             # Sizes come from the ZIP directory, so nothing is decompressed to check them.
-            unzipped = sum(i.file_size for i in zipfile.ZipFile(io.BytesIO(raw)).infolist())
-            if unzipped > max_unzipped_bytes:
-                raise UnparseableDocument(
-                    f"{filename!r} expands to {unzipped} uncompressed bytes "
-                    f"(limit {max_unzipped_bytes})"
-                )
+            with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                unzipped = sum(i.file_size for i in archive.infolist())
+        except zipfile.BadZipFile:
+            unzipped = 0  # not a ZIP (a PDF), or too broken for Docling to open either
+        if unzipped > max_unzipped_bytes:
+            raise UnparseableDocument(
+                f"{filename!r} expands to {unzipped} uncompressed bytes "
+                f"(limit {max_unzipped_bytes})"
+            )
         try:
             doc = converter.convert(
                 DocumentStream(name=filename, stream=io.BytesIO(raw)),

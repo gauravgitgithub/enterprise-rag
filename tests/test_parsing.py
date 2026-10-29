@@ -104,6 +104,15 @@ def test_corrupt_files_raise_unparseable_document(parse):
         parse(b"%PDF-1.7 truncated garbage", "original.pdf")
 
 
+# Break caught: a ZIP whose end record is valid but whose directory is corrupt escaping the size
+# check as BadZipFile, which the worker treats as transient and retries until the DLQ.
+def test_docx_with_corrupt_zip_directory_raises_unparseable_document(parse):
+    raw = docx_bytes().replace(b"PK\x01\x02", b"PK\x01\x00", 1)
+
+    with pytest.raises(UnparseableDocument):
+        parse(raw, "original.docx")
+
+
 def zip_bomb_docx() -> bytes:
     """A valid DOCX plus one entry that is tiny compressed but huge uncompressed."""
     import zipfile
