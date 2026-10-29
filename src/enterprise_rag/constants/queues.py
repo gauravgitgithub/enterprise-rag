@@ -10,3 +10,6 @@ TOPIC_ROUTES = {TOPIC_DOCUMENT_INGEST: (INGEST_TASK, INGEST_QUEUE)}
 VISIBILITY_TIMEOUT_S = 900
 # SQS long polling: fewer empty receives, lower cost.
 SQS_WAIT_TIME_S = 20
+
+# Transient failures (TEI, DB, S3 down) retry with exponential backoff, at most this many times.
+INGEST_MAX_RETRIES = 5

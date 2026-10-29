@@ -22,3 +22,4 @@ PARSE_MAX_PAGES = 500
 PARSE_TIMEOUT_S = 120.0
 # A DOCX is a ZIP; refuse ones that expand beyond this (zip bombs).
 PARSE_MAX_UNZIPPED_BYTES = 200 * 1024 * 1024
+DOCUMENT_STATUS_FAILED = "failed"
