@@ -16,3 +16,13 @@ class Settings(MigrationSettings):
 
     # App role: non-owner, NOBYPASSRLS. Every query it runs is tenant-filtered by Postgres.
     database_url: str
+
+
+class WorkerSettings(Settings):
+    """What the ingest worker needs on top of the app settings."""
+
+    aws_region: str
+    # Locally, AWS_ENDPOINT_URL_SQS / AWS_ENDPOINT_URL_S3 point boto3 at ElasticMQ / SeaweedFS.
+    ingest_queue_url: str
+    s3_bucket: str
+    tei_url: str
