@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: tei
+spec:
+  selector:
+    app: tei
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tei
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # the model cache volume is ReadWriteOnce
+  selector:
+    matchLabels:
+      app: tei
+  template:
+    metadata:
+      labels:
+        app: tei
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: tei
+          image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
+          args:
+            - --model-id=BAAI/bge-m3
+            - --port=8080
+            # Matches EMBED_BATCH_SIZE in the app.
+            - --max-client-batch-size=32
+            # Also caps input length (auto-truncate). The 8192 default makes warmup allocate a 4 GiB
+            # attention buffer; chunks are <= 1500 chars, well under 2048 tokens.
+            - --max-batch-tokens=2048
+          env:
+            - name: HUGGINGFACE_HUB_CACHE
+              value: /data
+          ports:
+            - containerPort: 8080
+          startupProbe: # first start downloads the ~2 GB model
+            httpGet: {path: /health, port: 8080}
+            periodSeconds: 10
+            failureThreshold: 90
+          readinessProbe:
+            httpGet: {path: /health, port: 8080}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 500m, memory: 3Gi}
+            limits: {memory: 4Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: models
+              mountPath: /data
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: tei-models
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tei-models
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rag
+  labels:
+    # Reject privileged pods and root containers at admission.
+    pod-security.kubernetes.io/enforce: restricted

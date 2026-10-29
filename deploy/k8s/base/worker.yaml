@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      automountServiceAccountToken: false
+      # Room for a running task to finish (task_time_limit is 600s). A task killed anyway is not
+      # lost: it was never acked, so SQS redelivers it after the visibility timeout.
+      terminationGracePeriodSeconds: 660
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: enterprise-rag
+          imagePullPolicy: IfNotPresent
+          # One task per pod: parsing is CPU- and memory-heavy, so scale with replicas instead.
+          # shortcut: no liveness probe (Celery has no HTTP endpoint); task_time_limit catches hung
+          # tasks. Add a `celery inspect ping` probe if workers wedge outside a task.
+          command: [celery, -A, enterprise_rag.worker.main, worker, -Q, ingest, --concurrency=1, --loglevel=INFO]
+          envFrom:
+            - configMapRef:
+                name: rag-config
+            - secretRef:
+                name: rag-aws
+                optional: true
+          env:
+            - name: RAG_APP_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: rag-db, key: RAG_APP_PASSWORD}
+            - name: RAG_DATABASE_URL
+              value: postgresql+asyncpg://rag_app:$(RAG_APP_PASSWORD)@postgres:5432/rag
+          resources:
+            # Measured: ~0.9 GiB with models loaded, 2.2 GiB peak parsing a 20-page PDF with tables.
+            requests: {cpu: 500m, memory: 2560Mi}
+            limits: {memory: 3Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

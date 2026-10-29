@@ -32,6 +32,11 @@ jobs:
         run: uv run ruff check . && uv run ruff format --check .
       - name: Types
         run: uv run mypy src
+      # kubectl ships on GitHub's runners. Rendering catches broken kustomizations and references.
+      - name: Kubernetes manifests
+        run: |
+          cp deploy/k8s/overlays/local/secrets.env.example deploy/k8s/overlays/local/secrets.env
+          kubectl kustomize deploy/k8s/overlays/local > /dev/null
       # Tests start their own Postgres 18 + pgvector container via testcontainers.
       - name: Tests
         run: uv run pytest -q

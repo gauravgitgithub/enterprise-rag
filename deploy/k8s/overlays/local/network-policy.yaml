@@ -1,0 +1,40 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: elasticmq-from-app
+spec:
+  podSelector:
+    matchLabels:
+      app: elasticmq
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - {key: app, operator: In, values: [relay, worker]}
+      ports:
+        - port: 9324
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: seaweedfs-from-app
+spec:
+  podSelector:
+    matchLabels:
+      app: seaweedfs
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - {key: app, operator: In, values: [worker, create-bucket]}
+      ports:
+        - port: 8333
+        - port: 9333
+        - port: 19333
+        - port: 8888
+        - port: 18888
+    # SeaweedFS's master, volume and filer talk to each other inside the pod via its own IP.
+    - from:
+        - podSelector:
+            matchLabels:
+              app: seaweedfs

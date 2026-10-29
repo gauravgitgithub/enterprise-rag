@@ -535,6 +535,13 @@ MUTANTS = [
         "{INGEST_QUEUE: 'http://localhost:9/nowhere'}",
         "test_relay_process_publishes_and_exits_on_sigterm",
     ),
+    (
+        "email redaction hits disk and network",
+        Path("src/enterprise_rag/ingestion/redaction.py"),
+        "tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None)",
+        "tldextract.TLDExtract()",
+        "test_email_redaction_needs_no_disk_cache_or_network",
+    ),
 ]
 
 survivors = []

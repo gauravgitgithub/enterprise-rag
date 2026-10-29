@@ -11,8 +11,10 @@ class MigrationSettings(BaseSettings):
     database_admin_url: str
 
 
-class Settings(MigrationSettings):
-    """What the app needs."""
+class Settings(BaseSettings):
+    """What the app needs. Deliberately not the admin URL: app pods never hold owner creds."""
+
+    model_config = MigrationSettings.model_config
 
     # App role: non-owner, NOBYPASSRLS. Every query it runs is tenant-filtered by Postgres.
     database_url: str

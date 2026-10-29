@@ -1,0 +1,38 @@
+# Colima (k3s): base + open-source stand-ins for SQS (ElasticMQ) and S3 (SeaweedFS).
+#   docker build -t enterprise-rag:dev .
+#   kubectl apply -k deploy/k8s/overlays/local
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: rag
+resources:
+  - ../../base
+  - elasticmq.yaml
+  - seaweedfs.yaml
+  - network-policy.yaml
+images:
+  - name: enterprise-rag
+    newTag: dev # built into Colima's Docker, which k3s shares: no registry needed
+  - name: ghcr.io/huggingface/text-embeddings-inference
+    newTag: cpu-arm64-1.9 # the plain cpu-* tags are amd64 only
+configMapGenerator:
+  - name: rag-config
+    behavior: merge
+    literals:
+      - RAG_AWS_REGION=eu-west-1
+      - RAG_INGEST_QUEUE_URL=http://elasticmq:9324/000000000000/ingest
+      - RAG_S3_BUCKET=documents
+      - AWS_ENDPOINT_URL_SQS=http://elasticmq:9324
+      - AWS_ENDPOINT_URL_S3=http://seaweedfs:8333
+  - name: elasticmq-config
+    files:
+      - elasticmq.conf
+secretGenerator:
+  # Not in git. Create it from secrets.env.example.
+  - name: rag-db
+    envs:
+      - secrets.env
+  # ElasticMQ and SeaweedFS accept any credentials; boto3 only needs some.
+  - name: rag-aws
+    literals:
+      - AWS_ACCESS_KEY_ID=local
+      - AWS_SECRET_ACCESS_KEY=local
