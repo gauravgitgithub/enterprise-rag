@@ -26,7 +26,8 @@ async def fetch(document: Document) -> bytes:
     return SOURCE
 
 
-def parse(raw: bytes) -> list[Section]:
+def parse(raw: bytes, filename: str) -> list[Section]:
+    assert filename == "refunds.txt"  # the pipeline passes the key's file name
     """Paragraph parser: enough structure for the pipeline, no Docling needed."""
     sections, offset = [], 0
     for i, para in enumerate(raw.decode().split("\n\n")):
@@ -49,7 +50,7 @@ async def _new_doc(app_factory, tenant) -> uuid.UUID:
         doc, _ = await uow.documents.register(
             Document(
                 title="Refunds",
-                source_uri="s3://t/refunds",
+                source_uri="s3://t/tenants/x/docs/d/v1/refunds.txt",
                 content_hash=hashlib.sha256(uuid.uuid4().bytes).hexdigest(),
                 acl_groups=ACL,
             )
