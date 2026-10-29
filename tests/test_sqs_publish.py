@@ -46,7 +46,8 @@ async def test_relayed_event_reaches_a_celery_worker(
     app.conf.broker_transport_options["wait_time_seconds"] = 1  # keep worker shutdown fast
     received: list[dict] = []
 
-    @app.task(name=INGEST_TASK)
+    # shared=False: a shared task would replace the real one in every later Celery app.
+    @app.task(name=INGEST_TASK, shared=False)
     def ingest(**kwargs):  # type: ignore[no-untyped-def]
         received.append(kwargs)
 

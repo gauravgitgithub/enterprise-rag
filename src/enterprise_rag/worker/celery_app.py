@@ -6,6 +6,7 @@ from celery import Celery
 from enterprise_rag.constants.queues import (
     INGEST_QUEUE,
     SQS_WAIT_TIME_S,
+    TASK_TIME_LIMIT_S,
     TOPIC_ROUTES,
     VISIBILITY_TIMEOUT_S,
 )
@@ -28,6 +29,7 @@ def make_celery(*, region: str, queue_urls: dict[str, str]) -> Celery:
         task_acks_late=True,
         task_reject_on_worker_lost=True,
         worker_prefetch_multiplier=1,
+        task_time_limit=TASK_TIME_LIMIT_S,
     )
     return app
 

@@ -451,6 +451,62 @@ MUTANTS = [
         "if False:",
         "test_docx_that_expands_beyond_the_limit_is_refused",
     ),
+    (
+        "failed documents re-parsed on redelivery",
+        Path("src/enterprise_rag/worker/ingest.py"),
+        "document.status != DOCUMENT_STATUS_PENDING",
+        "document.status == DOCUMENT_STATUS_READY",
+        "test_unparseable_document_is_marked_failed_and_not_retried",
+    ),
+    (
+        "unparseable files retried as transient",
+        Path("src/enterprise_rag/worker/ingest.py"),
+        "except UnparseableDocument:",
+        "except ZeroDivisionError:",
+        "test_unparseable_document_is_marked_failed_and_not_retried",
+    ),
+    (
+        "failed status never saved",
+        Path("src/enterprise_rag/worker/ingest.py"),
+        "document.status = DOCUMENT_STATUS_FAILED",
+        "pass",
+        "test_unparseable_document_is_marked_failed_and_not_retried",
+    ),
+    (
+        "string acl_groups split into letters",
+        Path("src/enterprise_rag/worker/ingest.py"),
+        "if not isinstance(groups, list):",
+        "if False:",
+        "test_malformed_messages_raise_value_error",
+    ),
+    (
+        "missing message keys escape as KeyError",
+        Path("src/enterprise_rag/worker/ingest.py"),
+        "except (KeyError, TypeError, AttributeError)",
+        "except (TypeError, AttributeError)",
+        "test_malformed_messages_raise_value_error",
+    ),
+    (
+        "bad input retried",
+        Path("src/enterprise_rag/worker/tasks.py"),
+        "dont_autoretry_for=(ValueError,),",
+        "",
+        "test_task_retries_transient_errors_but_not_bad_input",
+    ),
+    (
+        "transient errors not retried",
+        Path("src/enterprise_rag/worker/tasks.py"),
+        "autoretry_for=(Exception,),\n",
+        "",
+        "test_task_retries_transient_errors_but_not_bad_input",
+    ),
+    (
+        "worker deps rebuilt per task",
+        Path("src/enterprise_rag/worker/main.py"),
+        "@functools.cache\ndef deps",
+        "def deps",
+        "test_worker_module_wires_the_ingest_task_from_settings",
+    ),
 ]
 
 survivors = []

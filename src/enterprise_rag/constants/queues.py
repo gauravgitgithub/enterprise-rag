@@ -8,6 +8,8 @@ TOPIC_ROUTES = {TOPIC_DOCUMENT_INGEST: (INGEST_TASK, INGEST_QUEUE)}
 
 # Longer than the slowest ingest task, or SQS redelivers it to a second worker mid-run.
 VISIBILITY_TIMEOUT_S = 900
+# Hard kill for a stuck task (a parser hang); below the visibility timeout, so no double run.
+TASK_TIME_LIMIT_S = 600
 # SQS long polling: fewer empty receives, lower cost.
 SQS_WAIT_TIME_S = 20
 
