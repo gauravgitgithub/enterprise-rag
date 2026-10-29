@@ -1,0 +1,40 @@
+# Deny all ingress in the namespace, then open only the paths the app uses.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-from-app
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - {key: app, operator: In, values: [migrate, relay, worker]}
+      ports:
+        - port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tei-from-worker
+spec:
+  podSelector:
+    matchLabels:
+      app: tei
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: worker
+      ports:
+        - port: 8080

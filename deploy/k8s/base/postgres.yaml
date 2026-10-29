@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999 # the image's postgres user
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg18
+          env:
+            - name: POSTGRES_DB
+              value: rag
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: rag-db, key: POSTGRES_PASSWORD}
+            - name: RAG_APP_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: rag-db, key: RAG_APP_PASSWORD}
+            - name: RAG_RELAY_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: rag-db, key: RAG_RELAY_PASSWORD}
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, postgres, -d, rag]
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+            limits: {memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d
+            - name: run
+              mountPath: /var/run/postgresql
+      volumes:
+        - name: initdb
+          configMap:
+            name: postgres-initdb
+        - name: run
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 5Gi

@@ -2,6 +2,7 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 
+import tldextract.tldextract
 from presidio_analyzer import AnalyzerEngine
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
@@ -9,6 +10,11 @@ from presidio_anonymizer import AnonymizerEngine
 from enterprise_rag.constants.documents import SECTION_SEPARATOR
 from enterprise_rag.constants.redaction import LANGUAGE, REDACTED_ENTITIES, SPACY_MODEL
 from enterprise_rag.ingestion.chunking import Section
+
+# Presidio's email recognizer uses tldextract's module-level extractor, which by default fetches
+# the public-suffix list from GitHub and file-locks a cache dir on every read: both fail in a
+# read-only, offline pod. Use the snapshot bundled with the installed version instead.
+tldextract.tldextract.TLD_EXTRACTOR = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None)
 
 
 @dataclass(frozen=True, slots=True)

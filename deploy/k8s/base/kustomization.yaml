@@ -1,0 +1,20 @@
+# App components that run the same everywhere. The queue (SQS), object store (S3), secrets and
+# image tags come from an overlay; see overlays/local for Colima.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: rag
+resources:
+  - namespace.yaml
+  - postgres.yaml
+  - tei.yaml
+  - migrate-job.yaml
+  - relay.yaml
+  - worker.yaml
+  - network-policy.yaml
+configMapGenerator:
+  - name: rag-config
+    literals:
+      - RAG_TEI_URL=http://tei
+  - name: postgres-initdb
+    files:
+      - postgres-roles.sh

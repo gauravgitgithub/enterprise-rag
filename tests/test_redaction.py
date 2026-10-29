@@ -66,3 +66,22 @@ def test_section_headings_are_redacted_too(redactor):
 
     assert doc.sections[0].heading_path == "Contacts > <PERSON>"
     assert doc.entity_counts == {"PERSON": 1}
+
+
+# Break caught: email detection (Presidio -> tldextract) taking a file lock in a cache dir or
+# fetching the public-suffix list from GitHub. On a read-only pod that raised PermissionError
+# and every ingest task failed.
+def test_email_redaction_needs_no_disk_cache_or_network(redactor, monkeypatch):
+    import filelock
+    import requests
+
+    def refuse(*args, **kwargs):
+        raise PermissionError("read-only filesystem")
+
+    def offline(*args, **kwargs):
+        raise requests.ConnectionError("no network")
+
+    monkeypatch.setattr(filelock.BaseFileLock, "acquire", refuse)
+    monkeypatch.setattr(requests.Session, "get", offline)
+
+    assert redactor.redact("Write to jane.doe@example.co.uk").text == "Write to <EMAIL_ADDRESS>"

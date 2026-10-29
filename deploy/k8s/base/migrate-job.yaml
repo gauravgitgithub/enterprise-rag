@@ -1,0 +1,41 @@
+# Idempotent (alembic upgrade head), so re-running it on every apply is safe. The TTL removes the
+# finished Job so the next `kubectl apply` can create it again with a new image.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 10 # postgres may still be starting
+  template:
+    metadata:
+      labels:
+        app: migrate
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migrate
+          image: enterprise-rag
+          imagePullPolicy: IfNotPresent
+          command: [alembic, upgrade, head]
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: rag-db, key: POSTGRES_PASSWORD}
+            # Schema owner: only this Job ever holds it.
+            - name: RAG_DATABASE_ADMIN_URL
+              value: postgresql+asyncpg://postgres:$(POSTGRES_PASSWORD)@postgres:5432/rag
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]

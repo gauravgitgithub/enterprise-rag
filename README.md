@@ -49,6 +49,28 @@ export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
 uv run pytest
 ```
 
+## Run on Kubernetes (Colima)
+
+Everything runs in the `rag` namespace: Postgres 18 + pgvector, TEI (bge-m3), the outbox relay
+and the ingest worker, with ElasticMQ and SeaweedFS standing in for SQS and S3.
+
+Measured memory: TEI ~3 GiB, worker ~2.2 GiB peak while parsing, the rest under 0.5 GiB.
+Give the VM 10 GiB:
+
+```bash
+colima start --kubernetes --cpu 6 --memory 10
+docker build -t enterprise-rag:dev .
+cp deploy/k8s/overlays/local/secrets.env.example deploy/k8s/overlays/local/secrets.env
+# replace each CHANGE_ME with: openssl rand -hex 24
+kubectl apply -k deploy/k8s/overlays/local
+kubectl -n rag get pods -w
+```
+
+On first start TEI downloads bge-m3 (~2.2 GB) into its volume. The migrate Job and the relay
+retry until Postgres is up. Pods run as non-root with read-only root filesystems, the namespace
+enforces the `restricted` Pod Security Standard, and network policies deny all ingress except
+the paths the app uses.
+
 ## Guarantees tested in slice 1
 
 - A tenant cannot read, search or delete another tenant's documents.

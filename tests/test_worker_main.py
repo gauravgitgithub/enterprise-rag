@@ -39,3 +39,13 @@ def test_worker_settings_require_the_queue_url(monkeypatch):
 
     with pytest.raises(ValueError):
         WorkerSettings(_env_file=None)
+
+
+# Break caught: the worker pod needing the schema owner's credentials just to start.
+def test_worker_settings_do_not_need_admin_credentials(monkeypatch):
+    for key, value in ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("RAG_DATABASE_ADMIN_URL")
+    from enterprise_rag.config import WorkerSettings
+
+    assert not hasattr(WorkerSettings(_env_file=None), "database_admin_url")
