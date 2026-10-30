@@ -41,3 +41,13 @@ class WorkerSettings(Settings, QueueSettings):
 
     s3_bucket: str
     tei_url: str
+
+
+class ApiSettings(Settings):
+    """What the query API needs on top of the app settings."""
+
+    tei_url: str
+    # The identity provider whose access tokens the API accepts. Tokens carry tenant_id and groups.
+    jwt_issuer: str
+    jwt_audience: str
+    jwks_url: str

@@ -11,8 +11,8 @@ enforced inside Postgres.
 | Slice | Scope | State |
 |---|---|---|
 | 1 | Data layer: schema, row-level security, repositories, hybrid search | done |
-| 2 | Ingestion: S3 upload, outbox, Celery on SQS, parse, redact, chunk, embed | in progress: chunker, idempotent registration, PII redaction, outbox, Celery on SQS publish, ingest pipeline, S3 fetch, TEI embedding, Docling parse, ingest worker, outbox relay process done; k8s manifests next |
-| 3 | Query API: auth, rerank, OpenAI generation, citations, verifier | planned |
+| 2 | Ingestion: S3 upload, outbox, Celery on SQS, parse, redact, chunk, embed | in progress: chunker, idempotent registration, PII redaction, outbox, Celery on SQS publish, ingest pipeline, S3 fetch, TEI embedding, Docling parse, ingest worker, outbox relay process, k8s manifests done |
+| 3 | Query API: auth, rerank, OpenAI generation, citations, verifier | in progress: JWT auth (JWKS) and `POST /v1/search` done; rerank next |
 | 4 | Evals, CI gate, k8s deploy, load and chaos tests | planned |
 
 ## Layout
@@ -22,6 +22,7 @@ src/enterprise_rag/
   constants/      project-wide constants (no env-specific values)
   config.py       settings from env vars / .env
   context.py      RequestContext: tenant + groups from verified JWT claims
+  api/            FastAPI query API; JWT (RS256/ES256 via the IdP's JWKS) to RequestContext
   db/             SQLAlchemy models, engine/session factory
   repositories/   all DB access: DocumentRepository, ChunkRepository, UnitOfWork
 migrations/       Alembic (async); RLS policies live here
