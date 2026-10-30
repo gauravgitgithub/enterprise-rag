@@ -13,7 +13,7 @@ enforced inside Postgres.
 | 1 | Data layer: schema, row-level security, repositories, hybrid search | done |
 | 2 | Ingestion: S3 upload, outbox, Celery on SQS, parse, redact, chunk, embed | in progress: chunker, idempotent registration, PII redaction, outbox, Celery on SQS publish, ingest pipeline, S3 fetch, TEI embedding, Docling parse, ingest worker, outbox relay process, k8s manifests done |
 | 3 | Query API: auth, rerank, OpenAI generation, citations, verifier | done: JWT auth (JWKS), `POST /v1/search` with cross-encoder rerank, `POST /v1/answer` with validated `[n]` citations and a grounding check that withholds unsupported answers |
-| 4 | Evals, CI gate, k8s deploy, load and chaos tests | in progress: retrieval eval + CI gate, API and reranker on k8s done; load and chaos tests next |
+| 4 | Evals, CI gate, k8s deploy, load and chaos tests | done: retrieval eval + CI gate, API and reranker on k8s, 503s on dependency outages, load and chaos scripts run on Colima |
 
 ## Layout
 
@@ -90,6 +90,39 @@ On first start each TEI downloads its model (~2.2 GB each) into its volume. The 
 retry until Postgres is up. Pods run as non-root with read-only root filesystems, the namespace
 enforces the `restricted` Pod Security Standard, and network policies deny all ingress except
 the paths the app uses.
+
+## Load and chaos tests (Colima)
+
+The local overlay includes a dev identity provider (`svc/dev-idp`) that serves a JWKS; scripts
+mint tokens with its private key. A 10 GiB VM can't hold the worker and the reranker at once,
+so ingest first, then swap:
+
+```bash
+uv run python scripts/dev_idp.py   # once, before kubectl apply
+kubectl -n rag scale deploy/reranker deploy/api --replicas=0
+kubectl -n rag port-forward svc/postgres 15432:5432 &
+kubectl -n rag port-forward svc/seaweedfs 18333:8333 &
+uv run python scripts/seed_corpus.py            # evals/corpus as DOCX through S3, outbox, SQS, worker; prints the tenant id
+kubectl -n rag scale deploy/worker --replicas=0
+kubectl -n rag scale deploy/reranker deploy/api --replicas=1
+kubectl -n rag port-forward svc/api 8000:80 &
+uv run python scripts/load_test.py <tenant-id> 3 180
+pkill -f "port-forward svc/api"; uv run python scripts/chaos.py <tenant-id>
+```
+
+Measured 2026-10-30 (6 CPUs, all models on CPU):
+
+- Ingest: 23 documents ready 10 s after upload.
+- Load, 3 concurrent users for 3 min: 18/18 succeeded, 0.10 searches/s, p50 35.5 s. The
+  reranker is the bottleneck: ~12 s of CPU per query, one query at a time.
+- Chaos, one pod deleted under load, then 5 min of traffic:
+
+  | killed | during the outage | recovered after | 500s |
+  |---|---|---|---|
+  | reranker | 503 | 30 s | 0 |
+  | embedder (TEI) | 503 | 19 s | 0 |
+  | Postgres | 503 | 64 s | 0 |
+  | API (1 replica locally) | connection refused | 13 s | 0 |
 
 ## Guarantees tested in slice 1
 

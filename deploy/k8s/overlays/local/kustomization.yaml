@@ -9,6 +9,7 @@ resources:
   - elasticmq.yaml
   - seaweedfs.yaml
   - network-policy.yaml
+  - dev-idp.yaml
 images:
   - name: enterprise-rag
     newTag: dev # built into Colima's Docker, which k3s shares: no registry needed
@@ -36,14 +37,18 @@ configMapGenerator:
       - RAG_S3_BUCKET=documents
       - AWS_ENDPOINT_URL_SQS=http://elasticmq:9324
       - AWS_ENDPOINT_URL_S3=http://seaweedfs:8333
-      # Your identity provider. The API fetches its keys on the first request, not at startup.
-      - RAG_JWT_ISSUER=https://idp.example.com
+      # The dev IdP (dev-idp.yaml). Point these at a real IdP outside local development.
+      - RAG_JWT_ISSUER=http://dev-idp
       - RAG_JWT_AUDIENCE=enterprise-rag
-      - RAG_JWKS_URL=https://idp.example.com/.well-known/jwks.json
+      - RAG_JWKS_URL=http://dev-idp/jwks.json
       - RAG_OPENAI_MODEL=gpt-5.5
   - name: elasticmq-config
     files:
       - elasticmq.conf
+  # Not in git. Create with: uv run python scripts/dev_idp.py
+  - name: dev-idp
+    files:
+      - dev-idp/jwks.json
 secretGenerator:
   # Not in git. Create it from secrets.env.example.
   - name: rag-db

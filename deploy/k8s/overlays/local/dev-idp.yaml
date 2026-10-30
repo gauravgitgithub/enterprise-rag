@@ -1,0 +1,58 @@
+# Local stand-in for an identity provider: serves only the public JWKS. Tokens are minted on the
+# host with dev-idp/key.pem (scripts/devstack.py). Create both with scripts/dev_idp.py.
+apiVersion: v1
+kind: Service
+metadata:
+  name: dev-idp
+spec:
+  selector:
+    app: dev-idp
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dev-idp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dev-idp
+  template:
+    metadata:
+      labels:
+        app: dev-idp
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: dev-idp
+          image: enterprise-rag
+          imagePullPolicy: IfNotPresent
+          command: [python, -m, http.server, "8080", --directory, /srv]
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet: {path: /jwks.json, port: 8080}
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 64Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: jwks
+              mountPath: /srv
+      volumes:
+        - name: jwks
+          configMap:
+            name: dev-idp
