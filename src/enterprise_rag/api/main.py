@@ -8,13 +8,14 @@ import jwt
 from enterprise_rag.api.app import make_app
 from enterprise_rag.api.auth import verify_token
 from enterprise_rag.config import ApiSettings
+from enterprise_rag.constants.auth import JWKS_TIMEOUT_S
 from enterprise_rag.constants.embedding import EMBED_TIMEOUT_S
 from enterprise_rag.db.session import make_engine, make_session_factory
 from enterprise_rag.ingestion.embedding import make_tei_embed
 
 settings = ApiSettings()
 # Caches the IdP's public keys and refetches on an unknown key id, so key rotation just works.
-jwks = jwt.PyJWKClient(settings.jwks_url)
+jwks = jwt.PyJWKClient(settings.jwks_url, timeout=JWKS_TIMEOUT_S)
 
 app = make_app(
     make_session_factory(make_engine(settings.database_url)),
