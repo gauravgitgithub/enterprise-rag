@@ -20,14 +20,31 @@ class FakeModel:
         return self.reply
 
 
+class FakeJudge:
+    """Records what the grounding check was asked; flags the configured claims."""
+
+    def __init__(self) -> None:
+        self.unsupported: list[str] = []
+        self.calls: list[tuple[str, list[str]]] = []
+
+    async def __call__(self, answer: str, sources: Sequence[str]) -> list[str]:
+        self.calls.append((answer, list(sources)))
+        return self.unsupported
+
+
 @pytest.fixture
 def model():
     return FakeModel()
 
 
 @pytest.fixture
-def client(app_factory, model):
-    app = make_app(app_factory, embed, rerank, model, verify)
+def judge():
+    return FakeJudge()
+
+
+@pytest.fixture
+def client(app_factory, model, judge):
+    app = make_app(app_factory, embed, rerank, model, judge, verify)
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://api")
 
 
@@ -102,3 +119,50 @@ async def test_no_visible_chunks_means_no_model_call(client, model, make_tenant)
 
     assert response.json() == {"answer": NO_ANSWER, "citations": []}
     assert model.calls == []
+
+
+# Break caught: the grounding check skipped, judging the raw answer instead of the renumbered
+# one, or given every retrieved chunk instead of only the cited ones.
+async def test_grounding_check_sees_the_renumbered_answer_and_only_cited_chunks(
+    client, model, judge, app_factory, make_tenant
+):
+    tenant = await make_tenant()
+    await _seed(app_factory, tenant, ["hr"], "Refunds need a form. score:9")
+    await _seed(app_factory, tenant, ["hr"], "Refunds within 30 days. score:1", 1)
+    model.reply = "Within 30 days [2]."
+
+    await client.post("/v1/answer", json={"question": "refunds?"}, headers=_auth(tenant, ["hr"]))
+
+    assert judge.calls == [("Within 30 days [1].", ["Refunds within 30 days. score:1"])]
+
+
+# Break caught: an answer with claims its sources don't support shown to the user.
+async def test_answer_with_unsupported_claims_is_withheld(
+    client, model, judge, app_factory, make_tenant
+):
+    tenant = await make_tenant()
+    await _seed(app_factory, tenant, ["hr"], "Refunds within 30 days.")
+    model.reply = "Within 30 days [1], and you get a bonus [1]."
+    judge.unsupported = ["you get a bonus"]
+
+    response = await client.post(
+        "/v1/answer", json={"question": "refunds?"}, headers=_auth(tenant, ["hr"])
+    )
+
+    assert response.json() == {"answer": NO_ANSWER, "citations": []}
+
+
+# Break caught: an uncited answer (the model's own knowledge) shown to the user.
+async def test_uncited_answer_is_withheld_without_a_grounding_call(
+    client, model, judge, app_factory, make_tenant
+):
+    tenant = await make_tenant()
+    await _seed(app_factory, tenant, ["hr"], "Refunds within 30 days.")
+    model.reply = "Refunds usually take two weeks."
+
+    response = await client.post(
+        "/v1/answer", json={"question": "refunds?"}, headers=_auth(tenant, ["hr"])
+    )
+
+    assert response.json() == {"answer": NO_ANSWER, "citations": []}
+    assert judge.calls == []

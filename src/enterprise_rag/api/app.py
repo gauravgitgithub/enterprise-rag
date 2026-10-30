@@ -9,7 +9,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from enterprise_rag.api.auth import AuthError
-from enterprise_rag.api.generation import NO_ANSWER, Generate, resolve_citations
+from enterprise_rag.api.generation import (
+    NO_ANSWER,
+    CheckGrounding,
+    Generate,
+    resolve_citations,
+)
 from enterprise_rag.api.rerank import Rerank
 from enterprise_rag.constants.api import ANSWER_SOURCES, QUERY_MAX_CHARS, SEARCH_TOP_N_MAX
 from enterprise_rag.constants.retrieval import DEFAULT_SEARCH_TOP_N, RERANK_CANDIDATES
@@ -53,6 +58,7 @@ def make_app(
     embed: Embed,
     rerank: Rerank,
     generate: Generate,
+    check_grounding: CheckGrounding,
     verify: Callable[[str], RequestContext],
 ) -> FastAPI:
     app = FastAPI(title="Enterprise RAG")
@@ -109,6 +115,15 @@ def make_app(
         except ValueError:
             log.warning("answer cited a source it was not given; withholding it", exc_info=True)
             return AnswerResponse(answer=NO_ANSWER, citations=[])
-        return AnswerResponse(answer=text, citations=[hits[i] for i in cited])
+        # Uncited means ungrounded, however the model phrased it: covers "I don't know" too.
+        if not cited:
+            return AnswerResponse(answer=NO_ANSWER, citations=[])
+        citations = [hits[i] for i in cited]
+        unsupported = await check_grounding(text, [c.content for c in citations])
+        if unsupported:
+            # Count only: claims can quote document text, which stays out of the logs.
+            log.warning("answer has %d unsupported claims; withholding it", len(unsupported))
+            return AnswerResponse(answer=NO_ANSWER, citations=[])
+        return AnswerResponse(answer=text, citations=citations)
 
     return app

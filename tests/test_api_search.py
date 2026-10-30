@@ -34,7 +34,7 @@ def verify(token: str) -> RequestContext:
 
 @pytest.fixture
 def client(app_factory):
-    app = make_app(app_factory, embed, rerank, no_generate, verify)
+    app = make_app(app_factory, embed, rerank, no_generate, no_generate, verify)
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://api")
 
 
