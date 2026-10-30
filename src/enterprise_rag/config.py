@@ -47,6 +47,8 @@ class ApiSettings(Settings):
     """What the query API needs on top of the app settings."""
 
     tei_url: str
+    # A second TEI instance serving the cross-encoder: TEI serves one model per instance.
+    rerank_url: str
     # The identity provider whose access tokens the API accepts. Tokens carry tenant_id and groups.
     jwt_issuer: str
     jwt_audience: str

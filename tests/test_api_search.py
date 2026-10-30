@@ -19,17 +19,24 @@ async def embed(texts: Sequence[str]) -> list[list[float]]:
     return [onehot(0) for _ in texts]
 
 
+# Stands in for the cross-encoder: a text's score is the number after "score:" in it, else 0.
+async def rerank(query: str, texts: Sequence[str]) -> list[float]:
+    return [float(t.split("score:")[1]) if "score:" in t else 0.0 for t in texts]
+
+
 def verify(token: str) -> RequestContext:
     return verify_token(token, key_for, issuer=ISSUER, audience=AUDIENCE)
 
 
 @pytest.fixture
 def client(app_factory):
-    app = make_app(app_factory, embed, verify)
+    app = make_app(app_factory, embed, rerank, verify)
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://api")
 
 
-async def _seed(app_factory, tenant: uuid.UUID, acl: list[str], text: str) -> uuid.UUID:
+async def _seed(
+    app_factory, tenant: uuid.UUID, acl: list[str], text: str, embedding: int = 0
+) -> uuid.UUID:
     async with UnitOfWork(app_factory, RequestContext(tenant, frozenset(acl))) as uow:
         doc, _ = await uow.documents.register(
             Document(
@@ -40,7 +47,12 @@ async def _seed(app_factory, tenant: uuid.UUID, acl: list[str], text: str) -> uu
             )
         )
         chunk = Chunk(
-            ordinal=0, content=text, char_start=0, char_end=len(text), page=3, embedding=onehot(0)
+            ordinal=0,
+            content=text,
+            char_start=0,
+            char_end=len(text),
+            page=3,
+            embedding=onehot(embedding),
         )
         await uow.chunks.add_many(doc, [chunk])
         return chunk.id
@@ -79,6 +91,24 @@ async def test_search_returns_only_what_the_callers_tenant_and_groups_can_see(
     assert [h["chunk_id"] for h in hits] == [str(mine)]
     assert hits[0]["content"] == "Refunds within 30 days."
     assert hits[0]["page"] == 3
+
+
+# Break caught: the reranker's scores ignored (results in hybrid-search order), top_n not
+# applied after reranking, or the fused RRF score reported instead of the reranker's.
+async def test_search_orders_by_reranker_score_and_keeps_top_n(client, app_factory, make_tenant):
+    tenant = await make_tenant()
+    # Hybrid search ranks this one first: exact vector match and three keyword hits.
+    await _seed(app_factory, tenant, ["hr"], "Refunds refunds refunds. score:1")
+    best = await _seed(app_factory, tenant, ["hr"], "Refunds need a receipt. score:9", embedding=1)
+    await _seed(app_factory, tenant, ["hr"], "Unrelated travel policy.", embedding=2)
+
+    response = await client.post(
+        "/v1/search", json={"query": "refunds", "top_n": 1}, headers=_auth(tenant, ["hr"])
+    )
+
+    assert response.status_code == 200
+    hits = response.json()["hits"]
+    assert [(h["chunk_id"], h["score"]) for h in hits] == [(str(best), 9.0)]
 
 
 # Break caught: unbounded queries or top_n reaching the embedder and the database.

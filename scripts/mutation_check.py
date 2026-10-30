@@ -578,6 +578,27 @@ MUTANTS = [
         "test_out_of_range_requests_are_422",
     ),
     (
+        "reranker scores ignored",
+        Path("src/enterprise_rag/api/app.py"),
+        "sorted(zip(scores, hits, strict=True), key=lambda pair: -pair[0])",
+        "list(zip(scores, hits, strict=True))",
+        "test_search_orders_by_reranker_score_and_keeps_top_n",
+    ),
+    (
+        "reranker sees only top_n candidates",
+        Path("src/enterprise_rag/api/app.py"),
+        "top_n=RERANK_CANDIDATES",
+        "top_n=body.top_n",
+        "test_search_orders_by_reranker_score_and_keeps_top_n",
+    ),
+    (
+        "rerank batch index not offset",
+        Path("src/enterprise_rag/api/rerank.py"),
+        'scores[start + item["index"]]',
+        'scores[item["index"]]',
+        "test_batches_texts_and_maps_scores_back_by_index",
+    ),
+    (
         "worker deps rebuilt per task",
         Path("src/enterprise_rag/worker/main.py"),
         "@functools.cache\ndef deps",

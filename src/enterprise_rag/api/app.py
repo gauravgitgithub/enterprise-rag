@@ -8,8 +8,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from enterprise_rag.api.auth import AuthError
+from enterprise_rag.api.rerank import Rerank
 from enterprise_rag.constants.api import QUERY_MAX_CHARS, SEARCH_TOP_N_MAX
-from enterprise_rag.constants.retrieval import DEFAULT_SEARCH_TOP_N
+from enterprise_rag.constants.retrieval import DEFAULT_SEARCH_TOP_N, RERANK_CANDIDATES
 from enterprise_rag.context import RequestContext
 from enterprise_rag.ingestion.pipeline import Embed
 from enterprise_rag.repositories.uow import UnitOfWork
@@ -36,6 +37,7 @@ class SearchResponse(BaseModel):
 def make_app(
     session_factory: async_sessionmaker[AsyncSession],
     embed: Embed,
+    rerank: Rerank,
     verify: Callable[[str], RequestContext],
 ) -> FastAPI:
     app = FastAPI(title="Enterprise RAG")
@@ -60,19 +62,24 @@ def make_app(
     ) -> SearchResponse:
         [query_embedding] = await embed([body.query])
         async with UnitOfWork(session_factory, ctx) as uow:
-            hits = await uow.chunks.hybrid_search(body.query, query_embedding, top_n=body.top_n)
-            return SearchResponse(
-                hits=[
-                    Hit(
-                        chunk_id=h.chunk.id,
-                        document_id=h.chunk.document_id,
-                        content=h.chunk.content,
-                        section_path=h.chunk.section_path,
-                        page=h.chunk.page,
-                        score=h.score,
-                    )
-                    for h in hits
-                ]
+            hits = await uow.chunks.hybrid_search(
+                body.query, query_embedding, top_n=RERANK_CANDIDATES
             )
+        # Outside the transaction: no DB connection held while the cross-encoder runs.
+        scores = await rerank(body.query, [h.chunk.content for h in hits])
+        ranked = sorted(zip(scores, hits, strict=True), key=lambda pair: -pair[0])
+        return SearchResponse(
+            hits=[
+                Hit(
+                    chunk_id=h.chunk.id,
+                    document_id=h.chunk.document_id,
+                    content=h.chunk.content,
+                    section_path=h.chunk.section_path,
+                    page=h.chunk.page,
+                    score=score,
+                )
+                for score, h in ranked[: body.top_n]
+            ]
+        )
 
     return app
