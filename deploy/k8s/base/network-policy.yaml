@@ -19,14 +19,14 @@ spec:
     - from:
         - podSelector:
             matchExpressions:
-              - {key: app, operator: In, values: [migrate, relay, worker]}
+              - {key: app, operator: In, values: [migrate, relay, worker, api]}
       ports:
         - port: 5432
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: tei-from-worker
+  name: tei-from-app
 spec:
   podSelector:
     matchLabels:
@@ -34,7 +34,36 @@ spec:
   ingress:
     - from:
         - podSelector:
-            matchLabels:
-              app: worker
+            matchExpressions:
+              - {key: app, operator: In, values: [worker, api]}
       ports:
         - port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: reranker-from-api
+spec:
+  podSelector:
+    matchLabels:
+      app: reranker
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: api
+      ports:
+        - port: 8080
+---
+# The API is the public entry point. Every request still needs a valid token.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-from-anywhere
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  ingress:
+    - ports:
+        - port: 8000

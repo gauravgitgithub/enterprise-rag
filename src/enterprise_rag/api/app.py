@@ -77,6 +77,12 @@ def make_app(
                 status.HTTP_401_UNAUTHORIZED, headers={"WWW-Authenticate": "Bearer"}
             ) from None
 
+    # Liveness and readiness: the process serves HTTP. Deliberately checks no dependency, so a
+    # Postgres or TEI blip doesn't restart every API pod at once.
+    @app.get("/healthz")
+    async def healthz() -> dict[str, str]:
+        return {"status": "ok"}
+
     async def retrieve(query: str, top_n: int, ctx: RequestContext) -> list[Hit]:
         [query_embedding] = await embed([query])
         async with UnitOfWork(session_factory, ctx) as uow:

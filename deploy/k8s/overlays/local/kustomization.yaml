@@ -14,6 +14,19 @@ images:
     newTag: dev # built into Colima's Docker, which k3s shares: no registry needed
   - name: ghcr.io/huggingface/text-embeddings-inference
     newTag: cpu-arm64-1.9 # the plain cpu-* tags are amd64 only
+# The full stack's requests (~11 GiB) exceed a 10 GiB VM. Locally: one API pod, and the
+# reranker requests less than it uses (limit unchanged), overcommitting the node.
+patches:
+  - target: {kind: Deployment, name: api}
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target: {kind: Deployment, name: reranker}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 2Gi
 configMapGenerator:
   - name: rag-config
     behavior: merge
@@ -23,6 +36,11 @@ configMapGenerator:
       - RAG_S3_BUCKET=documents
       - AWS_ENDPOINT_URL_SQS=http://elasticmq:9324
       - AWS_ENDPOINT_URL_S3=http://seaweedfs:8333
+      # Your identity provider. The API fetches its keys on the first request, not at startup.
+      - RAG_JWT_ISSUER=https://idp.example.com
+      - RAG_JWT_AUDIENCE=enterprise-rag
+      - RAG_JWKS_URL=https://idp.example.com/.well-known/jwks.json
+      - RAG_OPENAI_MODEL=gpt-5.5
   - name: elasticmq-config
     files:
       - elasticmq.conf
@@ -31,6 +49,10 @@ secretGenerator:
   - name: rag-db
     envs:
       - secrets.env
+  # Not in git. Create it from openai.env.example.
+  - name: rag-openai
+    envs:
+      - openai.env
   # ElasticMQ and SeaweedFS accept any credentials; boto3 only needs some.
   - name: rag-aws
     literals:

@@ -36,6 +36,7 @@ jobs:
       - name: Kubernetes manifests
         run: |
           cp deploy/k8s/overlays/local/secrets.env.example deploy/k8s/overlays/local/secrets.env
+          cp deploy/k8s/overlays/local/openai.env.example deploy/k8s/overlays/local/openai.env
           kubectl kustomize deploy/k8s/overlays/local > /dev/null
       # Tests start their own Postgres 18 + pgvector container via testcontainers.
       - name: Tests
