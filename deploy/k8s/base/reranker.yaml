@@ -1,0 +1,82 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: reranker
+spec:
+  selector:
+    app: reranker
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reranker
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # the model cache volume is ReadWriteOnce
+  selector:
+    matchLabels:
+      app: reranker
+  template:
+    metadata:
+      labels:
+        app: reranker
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: reranker
+          image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
+          args:
+            - --model-id=BAAI/bge-reranker-v2-m3
+            - --port=8080
+            # Matches RERANK_BATCH_SIZE in the app.
+            - --max-client-batch-size=32
+            # Warmup memory scales with this: at 2048 the model peaked at 3.9 GiB RSS. A query plus a
+            # 1500-char chunk is under 600 tokens, so 1024 still fits any single pair; TEI splits a
+            # 32-text request into several internal batches.
+            - --max-batch-tokens=1024
+          env:
+            - name: HUGGINGFACE_HUB_CACHE
+              value: /data
+          ports:
+            - containerPort: 8080
+          startupProbe: # first start downloads the ~2 GB model
+            httpGet: {path: /health, port: 8080}
+            periodSeconds: 10
+            failureThreshold: 90
+          readinessProbe:
+            httpGet: {path: /health, port: 8080}
+            periodSeconds: 10
+          resources:
+            # Measured: OOM-killed at 3 GiB while loading the model, fine at 4 GiB.
+            requests: {cpu: 500m, memory: 3584Mi}
+            limits: {memory: 4Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: models
+              mountPath: /data
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: reranker-models
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: reranker-models
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi

@@ -7,14 +7,17 @@ resources:
   - namespace.yaml
   - postgres.yaml
   - tei.yaml
+  - reranker.yaml
   - migrate-job.yaml
   - relay.yaml
   - worker.yaml
+  - api.yaml
   - network-policy.yaml
 configMapGenerator:
   - name: rag-config
     literals:
       - RAG_TEI_URL=http://tei
+      - RAG_RERANK_URL=http://reranker
   - name: postgres-initdb
     files:
       - postgres-roles.sh

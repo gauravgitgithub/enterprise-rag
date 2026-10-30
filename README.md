@@ -13,7 +13,7 @@ enforced inside Postgres.
 | 1 | Data layer: schema, row-level security, repositories, hybrid search | done |
 | 2 | Ingestion: S3 upload, outbox, Celery on SQS, parse, redact, chunk, embed | in progress: chunker, idempotent registration, PII redaction, outbox, Celery on SQS publish, ingest pipeline, S3 fetch, TEI embedding, Docling parse, ingest worker, outbox relay process, k8s manifests done |
 | 3 | Query API: auth, rerank, OpenAI generation, citations, verifier | done: JWT auth (JWKS), `POST /v1/search` with cross-encoder rerank, `POST /v1/answer` with validated `[n]` citations and a grounding check that withholds unsupported answers |
-| 4 | Evals, CI gate, k8s deploy, load and chaos tests | in progress: retrieval eval + CI gate done; API k8s deploy next |
+| 4 | Evals, CI gate, k8s deploy, load and chaos tests | in progress: retrieval eval + CI gate, API and reranker on k8s done; load and chaos tests next |
 
 ## Layout
 
@@ -65,22 +65,28 @@ RAG_TEI_URL=http://localhost:8080 RAG_RERANK_URL=http://localhost:8081 uv run py
 
 ## Run on Kubernetes (Colima)
 
-Everything runs in the `rag` namespace: Postgres 18 + pgvector, TEI (bge-m3), the outbox relay
-and the ingest worker, with ElasticMQ and SeaweedFS standing in for SQS and S3.
+Everything runs in the `rag` namespace: Postgres 18 + pgvector, TEI (bge-m3), a second TEI
+(bge-reranker-v2-m3), the query API, the outbox relay and the ingest worker, with ElasticMQ and
+SeaweedFS standing in for SQS and S3.
 
-Measured memory: TEI ~3 GiB, worker ~2.2 GiB peak while parsing, the rest under 0.5 GiB.
-Give the VM 10 GiB:
+Measured memory: TEI ~3 GiB, reranker ~3.4 GiB, worker ~2.2 GiB peak while parsing, API ~0.45 GiB,
+the rest under 0.5 GiB. That is tight in a 10 GiB VM: the local overlay runs one API pod and
+overcommits the reranker's request, so a worker parsing a large PDF can push the node into OOM.
+Give the VM more memory if the host has it.
 
 ```bash
 colima start --kubernetes --cpu 6 --memory 10
 docker build -t enterprise-rag:dev .
 cp deploy/k8s/overlays/local/secrets.env.example deploy/k8s/overlays/local/secrets.env
 # replace each CHANGE_ME with: openssl rand -hex 24
+cp deploy/k8s/overlays/local/openai.env.example deploy/k8s/overlays/local/openai.env
+# set RAG_OPENAI_API_KEY; set your IdP's issuer, audience and JWKS URL in the overlay's kustomization.yaml
 kubectl apply -k deploy/k8s/overlays/local
 kubectl -n rag get pods -w
 ```
 
-On first start TEI downloads bge-m3 (~2.2 GB) into its volume. The migrate Job and the relay
+The API listens on `svc/api` port 80 (`kubectl -n rag port-forward svc/api 8000:80`).
+On first start each TEI downloads its model (~2.2 GB each) into its volume. The migrate Job and the relay
 retry until Postgres is up. Pods run as non-root with read-only root filesystems, the namespace
 enforces the `restricted` Pod Security Standard, and network policies deny all ingress except
 the paths the app uses.

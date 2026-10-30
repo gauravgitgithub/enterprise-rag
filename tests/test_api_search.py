@@ -130,3 +130,9 @@ async def test_out_of_range_requests_are_422(client, make_tenant, body):
         "/v1/search", json=body, headers=_auth(await make_tenant(), ["hr"])
     )
     assert response.status_code == 422
+
+
+# Break caught: the probe endpoint behind auth or missing, so k8s never marks the pod ready.
+async def test_healthz_needs_no_token(client):
+    response = await client.get("/healthz")
+    assert response.status_code == 200
