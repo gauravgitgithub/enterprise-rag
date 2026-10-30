@@ -24,13 +24,17 @@ async def rerank(query: str, texts: Sequence[str]) -> list[float]:
     return [float(t.split("score:")[1]) if "score:" in t else 0.0 for t in texts]
 
 
+async def no_generate(question: str, sources: Sequence[str]) -> str:
+    raise AssertionError("search must not call the model")
+
+
 def verify(token: str) -> RequestContext:
     return verify_token(token, key_for, issuer=ISSUER, audience=AUDIENCE)
 
 
 @pytest.fixture
 def client(app_factory):
-    app = make_app(app_factory, embed, rerank, verify)
+    app = make_app(app_factory, embed, rerank, no_generate, verify)
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://api")
 
 
