@@ -88,7 +88,8 @@ def make_app(
     bearer = HTTPBearer(auto_error=False)
 
     async def dependency_unavailable(request: Request, exc: Exception) -> JSONResponse:
-        log.warning("%s failed on %s: %s", type(exc).__name__, request.url.path, exc)
+        # Type and route only: SQLAlchemy messages carry the SQL and its bound parameters.
+        log.warning("%s failed on %s", type(exc).__name__, request.url.path)
         return JSONResponse(
             {"detail": "a dependency is unavailable; retry later"},
             status.HTTP_503_SERVICE_UNAVAILABLE,
