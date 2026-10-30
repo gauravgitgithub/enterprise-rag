@@ -1,0 +1,44 @@
+{"question": "How long does a customer have to get their money back on a yearly subscription?", "doc": "refunds.md", "must_contain": "within 30 days of purchase"}
+{"question": "Who has to sign off on a large refund before it is processed?", "doc": "refunds.md", "must_contain": "finance controller"}
+{"question": "When will the refunded amount show up on the customer's card?", "doc": "refunds.md", "must_contain": "10 business days"}
+{"question": "Can we refund overage fees?", "doc": "refunds.md", "must_contain": "overage"}
+{"question": "How far in advance do I need to book a flight for a work trip?", "doc": "travel.md", "must_contain": "14 days before departure"}
+{"question": "Am I allowed to fly business class to Singapore on a 12 hour flight?", "doc": "travel.md", "must_contain": "longer than 8 hours"}
+{"question": "What is the per diem for food when travelling internationally?", "doc": "travel.md", "must_contain": "95 USD abroad"}
+{"question": "What is the deadline for filing an expense claim?", "doc": "expenses.md", "must_contain": "within 60 days"}
+{"question": "Is a credit card statement enough proof for an expense?", "doc": "expenses.md", "must_contain": "Card statements alone"}
+{"question": "When do I get paid back for approved expenses?", "doc": "expenses.md", "must_contain": "next monthly payroll"}
+{"question": "How many days a week can I work from home?", "doc": "remote_work.md", "must_contain": "three days per week"}
+{"question": "Is there money for buying a monitor for my home setup?", "doc": "remote_work.md", "must_contain": "500 USD"}
+{"question": "Can I work from Portugal for two months?", "doc": "remote_work.md", "must_contain": "20 working days"}
+{"question": "How much paid leave does a father get when his partner gives birth?", "doc": "parental_leave.md", "must_contain": "12 weeks"}
+{"question": "How early before the baby is due can maternity leave begin?", "doc": "parental_leave.md", "must_contain": "four weeks before the expected due date"}
+{"question": "Can I come back from parental leave on reduced hours?", "doc": "parental_leave.md", "must_contain": "60 percent"}
+{"question": "I clicked a link in a suspicious email, what is the time limit to tell someone?", "doc": "incident_reporting.md", "must_contain": "within one hour"}
+{"question": "Should I run antivirus myself on a hacked computer?", "doc": "incident_reporting.md", "must_contain": "Disconnect it from the network"}
+{"question": "What is the minimum password length?", "doc": "passwords.md", "must_contain": "14 characters"}
+{"question": "Can I use text message codes for two-factor login?", "doc": "passwords.md", "must_contain": "SMS codes"}
+{"question": "Do admins need a YubiKey?", "doc": "passwords.md", "must_contain": "Hardware security keys"}
+{"question": "How much RAM does a software engineer's laptop have?", "doc": "laptops.md", "must_contain": "32 GB"}
+{"question": "How often do we get a new computer?", "doc": "laptops.md", "must_contain": "every three years"}
+{"question": "What happens if I don't give back my laptop when I quit?", "doc": "laptops.md", "must_contain": "remotely wiped"}
+{"question": "How soon after a customer churns is their data erased?", "doc": "data_retention.md", "must_contain": "90 days"}
+{"question": "How long are audit trails stored?", "doc": "data_retention.md", "must_contain": "seven years"}
+{"question": "How long do we keep database backups?", "doc": "data_retention.md", "must_contain": "35 days"}
+{"question": "When does a new employee get access to production?", "doc": "onboarding.md", "must_contain": "only after both are done"}
+{"question": "How long is the probation period for new hires?", "doc": "onboarding.md", "must_contain": "six months"}
+{"question": "In which month are promotions decided?", "doc": "performance.md", "must_contain": "September cycle"}
+{"question": "How many peers give feedback in a review?", "doc": "performance.md", "must_contain": "three colleagues"}
+{"question": "Can I accept a 50 dollar Amazon voucher from a supplier?", "doc": "gifts.md", "must_contain": "gift cards are never acceptable"}
+{"question": "Is it OK to have dinner with a vendor who is bidding on our contract?", "doc": "gifts.md", "must_contain": "open procurement"}
+{"question": "What is the weekly payment for being on call?", "doc": "oncall.md", "must_contain": "200 USD"}
+{"question": "How is overtime paid when I get paged at night?", "doc": "oncall.md", "must_contain": "1.5 times"}
+{"question": "Can I start late after being woken up by an incident?", "doc": "oncall.md", "must_contain": "start work late"}
+{"question": "What does a support agent earn for covering a weekend?", "doc": "support_oncall.md", "must_contain": "150 USD"}
+{"question": "Do contractors get paid for being on standby?", "doc": "contractors.md", "must_contain": "do not receive standby pay"}
+{"question": "How does a vendor pay us back if they overcharged?", "doc": "vendor_payments.md", "must_contain": "credit note"}
+{"question": "Who must approve a trip to a dangerous country?", "doc": "travel_safety.md", "must_contain": "security team at least 21 days"}
+{"question": "When do I need a medical certificate for being off sick?", "doc": "sick_leave.md", "must_contain": "three consecutive working days"}
+{"question": "How quickly do we delete data when a current customer asks us to?", "doc": "customer_data_requests.md", "must_contain": "within 30 days of the verified request"}
+{"question": "How long does admin access last before it has to be renewed?", "doc": "admin_access.md", "must_contain": "maximum of 90 days"}
+{"question": "Does a conference trip come out of my training budget?", "doc": "learning_budget.md", "must_contain": "counts against the learning budget"}
