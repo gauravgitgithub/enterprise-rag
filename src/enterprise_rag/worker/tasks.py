@@ -3,7 +3,7 @@ import functools
 from collections.abc import Callable
 from typing import Any
 
-from celery import Celery
+from celery import Celery, Task
 
 from enterprise_rag.constants.queues import INGEST_MAX_RETRIES, INGEST_TASK
 from enterprise_rag.worker.ingest import IngestDeps, handle_ingest
@@ -24,6 +24,8 @@ def register_tasks(app: Celery, deps: Callable[[], IngestDeps]) -> None:
         dont_autoretry_for=(ValueError,),
         retry_backoff=True,
         max_retries=INGEST_MAX_RETRIES,
+        bind=True,
     )
-    def ingest(**payload: Any) -> str:
-        return _loop().run_until_complete(handle_ingest(payload, deps()))
+    def ingest(self: Task, **payload: Any) -> str:
+        last_attempt = self.request.retries >= INGEST_MAX_RETRIES
+        return _loop().run_until_complete(handle_ingest(payload, deps(), last_attempt=last_attempt))

@@ -42,11 +42,14 @@ def _parse_message(payload: dict[str, Any]) -> tuple[RequestContext, uuid.UUID]:
         raise ValueError(f"malformed ingest message: {exc!r}") from exc
 
 
-async def handle_ingest(payload: dict[str, Any], deps: IngestDeps) -> str:
+async def handle_ingest(
+    payload: dict[str, Any], deps: IngestDeps, *, last_attempt: bool = False
+) -> str:
     """Ingest one document as its own tenant and groups. Returns "ready", "failed" or "skipped".
 
     Unparseable files are marked failed once, not retried. Any other error propagates so the
-    task retries, and the transaction rolls back, leaving the document pending.
+    task retries, and the transaction rolls back, leaving the document pending; on the last
+    attempt it marks the document failed instead, so it never stays pending with no retry left.
     """
     ctx, document_id = _parse_message(payload)
     try:
@@ -66,6 +69,10 @@ async def handle_ingest(payload: dict[str, Any], deps: IngestDeps) -> str:
             return DOCUMENT_STATUS_READY
     except UnparseableDocument:
         log.warning("document %s is unparseable; marking failed", document_id, exc_info=True)
+    except Exception:
+        if not last_attempt:
+            raise
+        log.exception("document %s failed on its last attempt; marking failed", document_id)
 
     async with UnitOfWork(deps.session_factory, ctx) as uow:
         document = await uow.documents.get(document_id)

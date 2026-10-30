@@ -14,6 +14,7 @@ from enterprise_rag.ingestion.parsing import UnparseableDocument
 from enterprise_rag.ingestion.redaction import PiiRedactor
 from enterprise_rag.ingestion.service import register_document
 from enterprise_rag.repositories.uow import UnitOfWork
+from enterprise_rag.worker import tasks
 from enterprise_rag.worker.celery_app import make_celery
 from enterprise_rag.worker.ingest import IngestDeps, handle_ingest
 from enterprise_rag.worker.tasks import register_tasks
@@ -126,6 +127,18 @@ async def test_malformed_messages_raise_value_error(app_factory, redactor, paylo
         await handle_ingest(payload, deps(app_factory, redactor))
 
 
+# Break caught: a document whose task exhausts its retries staying "pending" forever, with
+# nothing telling the tenant it will never be searchable.
+async def test_transient_error_on_the_last_attempt_marks_the_document_failed(
+    app_factory, admin_engine, make_tenant, redactor
+):
+    payload = await _payload(app_factory, make_tenant)
+    down = deps(app_factory, redactor, embed=embed_down)
+
+    assert await handle_ingest(payload, down, last_attempt=True) == "failed"
+    assert await _status(admin_engine, payload) == "failed"
+
+
 def db_down():
     raise OSError("database unreachable")
 
@@ -152,3 +165,20 @@ def test_task_retries_transient_errors_but_not_bad_input(redactor):
     attempts = 0
     task.apply(kwargs={"tenant_id": "nope", "document_id": "nope", "acl_groups": ACL})
     assert attempts == 1
+
+
+# Break caught: the task never telling handle_ingest which attempt is the last, so exhausted
+# retries leave the document pending; or telling it too early, failing documents a retry would fix.
+def test_task_flags_only_the_final_retry_as_last_attempt(redactor, monkeypatch):
+    app = make_celery(region="eu-west-1", queue_urls={INGEST_QUEUE: "http://unused"})
+    seen: list[bool] = []
+
+    async def down(payload, deps, *, last_attempt):
+        seen.append(last_attempt)
+        raise OSError("database unreachable")
+
+    monkeypatch.setattr(tasks, "handle_ingest", down)
+    register_tasks(app, lambda: deps(None, redactor))
+    app.tasks[INGEST_TASK].apply(kwargs={})
+
+    assert seen == [False] * INGEST_MAX_RETRIES + [True]
