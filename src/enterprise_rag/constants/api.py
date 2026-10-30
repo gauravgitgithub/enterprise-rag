@@ -6,3 +6,5 @@ ANSWER_SOURCES = 8
 # Seconds per OpenAI request; the SDK retries timeouts and 429/5xx this many times.
 GENERATE_TIMEOUT_S = 60.0
 GENERATE_MAX_RETRIES = 2
+# Seconds a client should wait before retrying after a 503 from a failed dependency.
+DEPENDENCY_RETRY_AFTER_S = 5

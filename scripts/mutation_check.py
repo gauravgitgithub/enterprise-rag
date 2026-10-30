@@ -662,6 +662,27 @@ MUTANTS = [
         "test_text_cannot_forge_prompt_delimiters",
     ),
     (
+        "dependency outage surfaces as 500",
+        Path("src/enterprise_rag/api/app.py"),
+        "app.add_exception_handler(error, dependency_unavailable)",
+        "pass",
+        "test_dependency_failures_are_503_with_retry_after",
+    ),
+    (
+        "outage handler misses asyncpg refusal",
+        Path("src/enterprise_rag/api/app.py"),
+        "    ConnectionError,  # asyncpg raises ConnectionRefusedError unwrapped\n",
+        "",
+        "test_database_down_is_503",
+    ),
+    (
+        "outage handler swallows config errors",
+        Path("src/enterprise_rag/api/app.py"),
+        "    openai.RateLimitError,\n",
+        "    openai.RateLimitError,\n    openai.AuthenticationError,\n",
+        "test_openai_auth_failure_is_not_retryable",
+    ),
+    (
         "worker deps rebuilt per task",
         Path("src/enterprise_rag/worker/main.py"),
         "@functools.cache\ndef deps",
