@@ -3,7 +3,11 @@ import uuid
 from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, status
+import httpx
+import openai
+import sqlalchemy.exc
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -16,13 +20,32 @@ from enterprise_rag.api.generation import (
     resolve_citations,
 )
 from enterprise_rag.api.rerank import Rerank
-from enterprise_rag.constants.api import ANSWER_SOURCES, QUERY_MAX_CHARS, SEARCH_TOP_N_MAX
+from enterprise_rag.constants.api import (
+    ANSWER_SOURCES,
+    DEPENDENCY_RETRY_AFTER_S,
+    QUERY_MAX_CHARS,
+    SEARCH_TOP_N_MAX,
+)
 from enterprise_rag.constants.retrieval import DEFAULT_SEARCH_TOP_N, RERANK_CANDIDATES
 from enterprise_rag.context import RequestContext
 from enterprise_rag.ingestion.pipeline import Embed
 from enterprise_rag.repositories.uow import UnitOfWork
 
 log = logging.getLogger(__name__)
+
+# A dependency that is down, slow or overloaded: TEI, the reranker, OpenAI or Postgres. The
+# request may succeed on retry, so these become 503 instead of an opaque 500. OpenAI auth and
+# bad-request errors are excluded: they are our misconfiguration, and retrying won't help.
+DEPENDENCY_ERRORS = (
+    httpx.HTTPError,
+    openai.APIConnectionError,  # includes timeouts
+    openai.RateLimitError,
+    openai.InternalServerError,
+    sqlalchemy.exc.OperationalError,
+    sqlalchemy.exc.InterfaceError,
+    sqlalchemy.exc.TimeoutError,  # connection pool exhausted
+    ConnectionError,  # asyncpg raises ConnectionRefusedError unwrapped
+)
 
 
 class SearchRequest(BaseModel):
@@ -63,6 +86,18 @@ def make_app(
 ) -> FastAPI:
     app = FastAPI(title="Enterprise RAG")
     bearer = HTTPBearer(auto_error=False)
+
+    async def dependency_unavailable(request: Request, exc: Exception) -> JSONResponse:
+        # Type and route only: SQLAlchemy messages carry the SQL and its bound parameters.
+        log.warning("%s failed on %s", type(exc).__name__, request.url.path)
+        return JSONResponse(
+            {"detail": "a dependency is unavailable; retry later"},
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            headers={"Retry-After": str(DEPENDENCY_RETRY_AFTER_S)},
+        )
+
+    for error in DEPENDENCY_ERRORS:
+        app.add_exception_handler(error, dependency_unavailable)
 
     # Sync on purpose: a JWKS cache miss is a blocking HTTP call, so FastAPI runs it in a thread.
     def caller(
