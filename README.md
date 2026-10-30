@@ -13,7 +13,7 @@ enforced inside Postgres.
 | 1 | Data layer: schema, row-level security, repositories, hybrid search | done |
 | 2 | Ingestion: S3 upload, outbox, Celery on SQS, parse, redact, chunk, embed | in progress: chunker, idempotent registration, PII redaction, outbox, Celery on SQS publish, ingest pipeline, S3 fetch, TEI embedding, Docling parse, ingest worker, outbox relay process, k8s manifests done |
 | 3 | Query API: auth, rerank, OpenAI generation, citations, verifier | done: JWT auth (JWKS), `POST /v1/search` with cross-encoder rerank, `POST /v1/answer` with validated `[n]` citations and a grounding check that withholds unsupported answers |
-| 4 | Evals, CI gate, k8s deploy, load and chaos tests | planned |
+| 4 | Evals, CI gate, k8s deploy, load and chaos tests | in progress: retrieval eval + CI gate done; API k8s deploy next |
 
 ## Layout
 
@@ -48,6 +48,19 @@ Tests start their own container. On Colima, point testcontainers at its socket:
 export DOCKER_HOST=unix://$HOME/.colima/default/docker.sock
 export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
 uv run pytest
+```
+
+## Retrieval eval
+
+`evals/` holds a fixed corpus of 23 short policy documents (13 targets, 10 lookalikes that
+share vocabulary but state different facts) and 44 questions, each naming the document and
+text its answer must come from. The eval ingests the corpus through the real pipeline and
+reports recall@5 and MRR with and without the reranker. CI gates on both (`eval` job).
+
+```bash
+docker run -d -p 8080:80 -v tei:/data ghcr.io/huggingface/text-embeddings-inference:cpu-1.9 --model-id BAAI/bge-m3
+docker run -d -p 8081:80 -v tei:/data ghcr.io/huggingface/text-embeddings-inference:cpu-1.9 --model-id BAAI/bge-reranker-v2-m3
+RAG_TEI_URL=http://localhost:8080 RAG_RERANK_URL=http://localhost:8081 uv run pytest -m eval -s
 ```
 
 ## Run on Kubernetes (Colima)

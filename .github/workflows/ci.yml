@@ -43,3 +43,40 @@ jobs:
       # Every mutant must be caught, proving the tests can fail.
       - name: Mutation check
         run: uv run python scripts/mutation_check.py
+
+  # Retrieval quality gate: the real embedder and reranker on a fixed corpus (evals/).
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TEI_IMAGE: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      # bge-m3 and bge-reranker-v2-m3 are ~2.2 GB each; download once, then restore.
+      - uses: actions/cache@v4
+        with:
+          path: ~/tei-models
+          key: tei-bge-m3-bge-reranker-v2-m3-v1
+      # Flags match deploy/k8s/base/tei.yaml.
+      - name: Start TEI
+        run: |
+          mkdir -p ~/tei-models
+          for spec in "tei 8080 BAAI/bge-m3" "reranker 8081 BAAI/bge-reranker-v2-m3"; do
+            set -- $spec
+            docker run -d --name "$1" -p "$2:80" -v ~/tei-models:/data "$TEI_IMAGE" \
+              --model-id "$3" --max-client-batch-size 32 --max-batch-tokens 2048
+          done
+          for port in 8080 8081; do
+            timeout 1200 bash -c "until curl -sf localhost:$port/health; do sleep 5; done"
+          done
+      - name: Retrieval eval
+        env:
+          RAG_TEI_URL: http://localhost:8080
+          RAG_RERANK_URL: http://localhost:8081
+        run: uv run pytest -m eval -s
+      - if: failure()
+        run: docker logs tei --tail 50; docker logs reranker --tail 50
