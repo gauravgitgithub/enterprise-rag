@@ -1,3 +1,4 @@
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -53,3 +54,6 @@ class ApiSettings(Settings):
     jwt_issuer: str
     jwt_audience: str
     jwks_url: str
+    # No default model: the ID is a deliberate, per-deployment choice.
+    openai_model: str
+    openai_api_key: SecretStr

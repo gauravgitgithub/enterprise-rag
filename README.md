@@ -12,7 +12,7 @@ enforced inside Postgres.
 |---|---|---|
 | 1 | Data layer: schema, row-level security, repositories, hybrid search | done |
 | 2 | Ingestion: S3 upload, outbox, Celery on SQS, parse, redact, chunk, embed | in progress: chunker, idempotent registration, PII redaction, outbox, Celery on SQS publish, ingest pipeline, S3 fetch, TEI embedding, Docling parse, ingest worker, outbox relay process, k8s manifests done |
-| 3 | Query API: auth, rerank, OpenAI generation, citations, verifier | in progress: JWT auth (JWKS), `POST /v1/search`, cross-encoder rerank (bge-reranker-v2-m3 on TEI) done; OpenAI generation next |
+| 3 | Query API: auth, rerank, OpenAI generation, citations, verifier | in progress: JWT auth (JWKS), `POST /v1/search`, cross-encoder rerank (bge-reranker-v2-m3 on TEI), `POST /v1/answer` (OpenAI Responses API, validated `[n]` citations) done; verifier next |
 | 4 | Evals, CI gate, k8s deploy, load and chaos tests | planned |
 
 ## Layout
